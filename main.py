@@ -14,25 +14,24 @@ async def on_ready():
 
 # --- KOMENDA NA REGULAMIN ---
 @bot.command()
-@commands.has_permissions(administrator=True) # Tylko admin może to wpisać
-async def regulamin(ctx):
-    # Tworzymy ramkę (Embed)
+@commands.has_permissions(administrator=True)
+async def regulamin(ctx, *, wiadomosc: str):
+    # Dzielimy wiadomość na tytuł i opis używając znaku "|"
+    if "|" in wiadomosc:
+        tytul, opis = wiadomosc.split("|", 1)
+    else:
+        tytul = "Regulamin Serwera"
+        opis = wiadomosc
+
     embed = discord.Embed(
-        title="📜 REGULAMIN SERWERA",
-        description="Dołączając do nas, akceptujesz poniższe zasady:",
-        color=discord.Color.blue() # Kolor paska z boku
+        title=tytul.strip(),
+        description=opis.strip(),
+        color=discord.Color.blue()
     )
     
-    # Dodajemy punkty regulaminu
-    embed.add_field(name="§1.0", value="Zakaz obrażania innych użytkowników.", inline=False)
-    embed.add_field(name="§1.1", value="Zakaz reklamowania innych serwerów.", inline=False)
-    embed.add_field(name="§1.2", value="Słuchaj poleceń administracji.", inline=False)
+    embed.set_footer(text=f"Wysłane przez: {ctx.author.name}")
     
-    # Dodajemy stopkę i obrazek (jeśli chcesz)
-    embed.set_footer(text="Administracja Cyfer-Bot", icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
-    
-    # Bot usuwa Twoją wiadomość !regulamin i wysyła ładną ramkę
-    await ctx.message.delete()
+    await ctx.message.delete() # Usuwa Twoją komendę, zostaje tylko embed
     await ctx.send(embed=embed)
 
 # --- KOMENDA PING ---
