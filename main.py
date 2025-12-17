@@ -2,59 +2,63 @@ import discord
 import os
 from discord.ext import commands
 
-# Podstawowa konfiguracja bota
+# 1. Konfiguracja uprawnień (BARDZO WAŻNE)
 intents = discord.Intents.default()
-intents.message_content = True  # Pozwala czytać treść wiadomości
-intents.members = True          # Pozwala widzieć użytkowników
+intents.message_content = True  # Musi być włączone, żeby bot czytał komendy
+intents.members = True
 
+# 2. Tworzenie bota z prefixem "!" (np. !regulamin)
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# --- ZDARZENIE: START BOTA ---
 @bot.event
 async def on_ready():
-    # Ten napis zobaczysz w logach Koyeb, gdy bot wstanie
-    print(f'Bot {bot.user} jest online i gotowy!')
+    print(f'✅ SUKCES: Bot {bot.user} jest zalogowany i gotowy!')
+    # Ustawia status bota na "Ogląda: Wasz Serwer"
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="Wasz Serwer"))
 
-# --- KOMENDA: PING (do sprawdzania czy żyje) ---
+# --- KOMENDA: PING (Testowa) ---
 @bot.command()
 async def ping(ctx):
-    await ctx.send(f'🏓 Pong! Opóźnienie: {round(bot.latency * 1000)}ms')
+    await ctx.send(f'🏓 Pong! ({round(bot.latency * 1000)}ms)')
 
-# --- KOMENDA: WYCZYŚĆ (pomaga sprzątać kanał) ---
+# --- KOMENDA: REGULAMIN (Główna) ---
 @bot.command()
-@commands.has_permissions(manage_messages=True)
-async def clear(ctx, ilosc: int):
-    await ctx.channel.purge(limit=ilosc + 1)
-    await ctx.send(f'🗑️ Usunięto {ilosc} wiadomości.', delete_after=3)
+@commands.has_permissions(administrator=True) # Tylko admin może użyć
+async def regulamin(ctx, *, tresc: str = None):
+    # Jeśli ktoś wpisze samo !regulamin bez tekstu
+    if tresc is None:
+        await ctx.send("❌ Błąd: Musisz wpisać treść! Użyj: `!regulamin Tytuł | Treść`")
+        return
 
-# --- KOMENDA: REGULAMIN (Dynamiczny) ---
-# Użycie: !regulamin Tytuł | Treść regulaminu
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def regulamin(ctx, *, tekst: str):
-    # Sprawdzamy, czy użyłeś kreski | do oddzielenia tytułu
-    if "|" in tekst:
-        tytul, opis = tekst.split("|", 1)
+    # Dzielimy tekst na Tytuł i Opis znakiem "|"
+    if "|" in tresc:
+        tytul, opis = tresc.split("|", 1)
     else:
-        tytul = "Regulamin Serwera"
-        opis = tekst
+        # Jeśli nie dasz kreski, całość będzie opisem
+        tytul = "📢 OGŁOSZENIE"
+        opis = tresc
 
-    # Tworzenie profesjonalnej ramki (Embed)
+    # Tworzenie ładnej ramki (Embed)
     embed = discord.Embed(
         title=tytul.strip(),
-        description=opis.strip(),
-        color=discord.Color.from_rgb(43, 88, 155) # Twój niebieski
+        description=opis.strip().replace("\\n", "\n"), # Zamienia \n na nową linię
+        color=0x2b589b # Twój niebieski kolor
     )
-    
-    # Dodajemy stopkę z Twoim logiem (jeśli serwer je ma)
+
+    # Dodanie stopki z logiem serwera (jeśli jest)
     if ctx.guild.icon:
-        embed.set_footer(text=f"Serwer: {ctx.guild.name}", icon_url=ctx.guild.icon.url)
-    
-    # Bot usuwa Twoją komendę, żeby nie śmiecić
+        embed.set_footer(text=f"Administracja {ctx.guild.name}", icon_url=ctx.guild.icon.url)
+    else:
+        embed.set_footer(text=f"Administracja {ctx.guild.name}")
+
+    # Usuwanie Twojej wiadomości z komendą i wysłanie ramki
     await ctx.message.delete()
-    
-    # Bot wysyła gotowy regulamin
     await ctx.send(embed=embed)
 
-# Pobieranie tokenu z ustawień Koyeb
+# --- URUCHAMIANIE ---
 token = os.getenv('DISCORD_TOKEN')
-bot.run(token)
+if token:
+    bot.run(token)
+else:
+    print("❌ BŁĄD: Nie znaleziono tokena w zmiennych środowiskowych!")
