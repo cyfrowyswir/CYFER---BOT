@@ -11,7 +11,7 @@ intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Kolor przewodni (Fioletowy DreamCode)
+# Kolor przewodni (Fioletowy)
 THEME_COLOR = 0x6c5ce7 
 
 # --- 1. PANEL ZARZĄDZANIA W ŚRODKU TICKETA ---
@@ -152,8 +152,8 @@ async def ticket_setup(ctx):
     if ctx.guild.icon:
         embed.set_thumbnail(url=ctx.guild.icon.url)
     
-    embed.set_image(url="https://i.imgur.com/7v1rXlG.png") # Możesz tu wstawić swój baner!
-    embed.set_footer(text="DreamCode System • Bezpieczne Zgłoszenia")
+    embed.set_image(url="https://imgur.com/a/RmMR1U0") # Możesz tu wstawić swój baner!
+    embed.set_footer(text="WizardStudio System • Bezpieczne Zgłoszenia")
 
     await ctx.send(embed=embed, view=TicketLauncher())
 
