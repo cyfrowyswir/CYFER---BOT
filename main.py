@@ -139,18 +139,13 @@ async def ticket_setup(ctx):
     embed = discord.Embed(
         title="📬 CENTRUM POMOCY",
         description=(
-            "> **Witaj w naszym systemie zgłoszeń!**\n\n"
-            "Wybierz z menu poniżej odpowiednią kategorię, aby skontaktować się z administracją.\n\n"
-            "🛡️ **Pomoc Ogólna** - Problemy techniczne i pytania\n"
-            "💰 **Zamówienia** - Boty, strony www, grafika\n"
-            "🎁 **Nagrody** - Odbiór wygranych konkursowych\n"
+            "> **Jeśli potrzebujesz pomocy lub masz pytania, wybierz Pomoc ogólną.
+W sprawie zamówień lub wyceny skorzystaj z odpowiedniej kategorii w menu!**\n\n"
+            "``Jeżeli jesteś kupującym, wysyłaj środki wyłącznie na dane podane przez bota.``\n\n"
+            "``Administracja oraz Zespół proszą o niezakładanie zgłoszeń bez powodu i niepingowanie — odpowiemy, gdy tylko będziemy dostępni.``"
         ),
         color=THEME_COLOR
     )
-    
-    # Jeśli serwer ma ikonę, ustawiamy ją jako miniaturkę
-    if ctx.guild.icon:
-        embed.set_thumbnail(url=ctx.guild.icon.url)
     
     embed.set_image(url="https://imgur.com/a/RmMR1U0") # Możesz tu wstawić swój baner!
     embed.set_footer(text="WizardStudio System • Bezpieczne Zgłoszenia")
