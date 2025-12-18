@@ -6,9 +6,9 @@ from discord import app_commands
 from discord.ui import View, Button
 
 # --- USTAWIAJĄC TE ID, BOT BĘDZIE WIEDZIAŁ GDZIE DZIAŁAĆ ---
-ID_KANALU_POWITAN = 1234567890  # ID kanału powitalnego
-ID_ROLI_WERYFIKACJA = 0987654321 # ID roli nadawanej po kliknięciu
-ID_KANALU_WERYFIKACJA = 1122334455 # ID kanału gdzie stoi panel weryfikacji
+ID_KANALU_POWITAN = 1451263521995362564  # ID kanału powitalnego
+ID_ROLI_WERYFIKACJA = 1451263520812568672 # ID roli nadawanej po kliknięciu
+ID_KANALU_WERYFIKACJA = 1451263521995362557 # ID kanału gdzie stoi panel weryfikacji
 
 intents = discord.Intents.default()
 intents.message_content = True
