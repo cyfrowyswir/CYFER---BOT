@@ -2,117 +2,84 @@ import discord
 import os
 import asyncio
 from discord.ext import commands
-from discord.ui import Select, View, Button
+from discord.ui import Select, View, Button, Modal, TextInput
 
-# --- KONFIGURACJA ---
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-THEME_COLOR = 0x6c5ce7 
-
-# --- 1. PANEL ZARZĄDZANIA W ŚRODKU TICKETA ---
+# --- SYSTEM TICKETÓW ---
 class TicketControlView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Zamknij Zgłoszenie", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_ticket_btn")
+    @discord.ui.button(label="Zamknij Zgłoszenie", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_t")
     async def close_ticket(self, interaction: discord.Interaction, button: Button):
-        embed = discord.Embed(
-            title="🔒 Zamykanie...",
-            description=f"Ticket zostanie usunięty za **5 sekund**.",
-            color=discord.Color.red()
-        )
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message("🔒 Usuwanie kanału za 5s...")
         await asyncio.sleep(5)
         await interaction.channel.delete()
 
-# --- 2. MENU WYBORU KATEGORII ---
 class TicketSelect(Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Pomoc Ogólna", description="Pytania i wsparcie ogólne.", emoji="💎"),
-            discord.SelectOption(label="Zamówienie - Bot", description="Chcesz zamówić bota?", emoji="🤖"),
-            discord.SelectOption(label="Zamówienie - Grafika", description="Potrzebujesz grafiki?", emoji="🎨"),
-            discord.SelectOption(label="Odbiór Nagrody", description="Odbiór wygranych.", emoji="🎁"),
+            discord.SelectOption(label="Pomoc Ogólna", emoji="💎"),
+            discord.SelectOption(label="Zamówienie - Bot", emoji="🤖"),
+            discord.SelectOption(label="Zamówienie - Grafika", emoji="🎨"),
+            discord.SelectOption(label="Odbiór Nagrody", emoji="🎁")
         ]
-        super().__init__(
-            placeholder="Wybierz jedną z opcji która Cię interesuje...",
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id="ticket_select_menu"
-        )
+        super().__init__(placeholder="Wybierz kategorię...", options=options, custom_id="t_select")
 
     async def callback(self, interaction: discord.Interaction):
-        guild = interaction.guild
-        category_name = self.values[0]
-        channel_name = f"ticket-{interaction.user.name.lower()}"
-
-        existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
-        if existing_channel:
-            await interaction.response.send_message(f"❌ Masz już otwarty ticket: {existing_channel.mention}!", ephemeral=True)
-            return
+        ch_name = f"ticket-{interaction.user.name.lower()}"
+        if discord.utils.get(interaction.guild.text_channels, name=ch_name):
+            return await interaction.response.send_message("❌ Masz już otwarty ticket!", ephemeral=True)
 
         overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
+        ch = await interaction.guild.create_text_channel(name=ch_name, overwrites=overwrites)
+        emb = discord.Embed(title=f"Zgłoszenie: {self.values[0]}", description=f"Witaj {interaction.user.mention}!\nOpisz swoją sprawę.", color=0x6c5ce7)
+        await ch.send(content=interaction.user.mention, embed=emb, view=TicketControlView())
+        await interaction.response.send_message(f"✅ Utworzono: {ch.mention}", ephemeral=True)
 
-        try:
-            ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
-            
-            embed = discord.Embed(
-                title=f"Zgłoszenie: {category_name}",
-                description=(
-                    f"Witaj {interaction.user.mention}!\n\n"
-                    "Dziękujemy za kontakt. Opisz dokładnie swój problem lub sprawę.\n"
-                    "**Administracja odpowie najszybciej jak to możliwe.**"
-                ),
-                color=THEME_COLOR
-            )
-            embed.set_footer(text="Użyj przycisku poniżej, aby zamknąć ten kanał.")
+# --- SYSTEM REGULAMINU (GUI) ---
+class RegModal(Modal, title="Tworzenie Regulaminu"):
+    t = TextInput(label="Tytuł", required=True)
+    o = TextInput(label="Treść", style=discord.TextStyle.paragraph, required=True)
+    async def on_submit(self, interaction: discord.Interaction):
+        emb = discord.Embed(title=self.t.value, description=self.o.value, color=0x6c5ce7)
+        await interaction.channel.send(embed=emb)
+        await interaction.response.send_message("Wysłano!", ephemeral=True)
 
-            await ticket_channel.send(content=interaction.user.mention, embed=embed, view=TicketControlView())
-            await interaction.response.send_message(f"✅ Utworzono ticket: {ticket_channel.mention}", ephemeral=True)
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Błąd: {e}", ephemeral=True)
+class RegView(View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.button(label="📝 Stwórz Regulamin", style=discord.ButtonStyle.primary)
+    async def open_m(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(RegModal())
 
-class TicketLauncher(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(TicketSelect())
-
-# --- 3. START I KOMENDY ---
+# --- KOMENDY ---
 @bot.event
 async def on_ready():
-    print(f'✅ Bot {bot.user} online!')
-    bot.add_view(TicketLauncher())
+    bot.add_view(View().add_item(TicketSelect()))
     bot.add_view(TicketControlView())
+    bot.add_view(RegView())
+    print(f"Bot {bot.user} gotowy.")
 
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def ticket_setup(ctx):
     await ctx.message.delete()
-    
-    # --- NOWY OPIS ZGODNY Z TWOJĄ PROŚBĄ ---
-    embed = discord.Embed(
-        title="💎 DREAMCODE × TICKETY",
-        description=(
-            "Jeśli potrzebujesz pomocy lub masz pytania, wybierz **Pomoc ogólną**.\n\n"
-            "W sprawie zamówień lub wyceny skorzystaj z odpowiedniej kategorii w menu.\n"
-            "Jeżeli jesteś kupującym, wysyłaj środki wyłącznie na dane podane przez bota.\n\n"
-            "Administracja oraz Zespół proszą o niezakładanie zgłoszeń bez powodu i niepingowanie — odpowiemy, gdy tylko będziemy dostępni."
-        ),
-        color=THEME_COLOR
-    )
-    # Miniatura (logo) i obrazek zostały usunięte
-    embed.set_footer(text="DreamCode • System zgłoszeń")
+    emb = discord.Embed(title="💎 DREAMCODE × TICKETY", description="Jeśli potrzebujesz pomocy lub masz pytania, wybierz **Pomoc ogólną**.\n\nW sprawie zamówień lub wyceny skorzystaj z odpowiedniej kategorii w menu.\nJeżeli jesteś kupującym, wysyłaj środki wyłącznie na dane podane przez bota.\n\nAdministracja oraz Zespół proszą o niezakładanie zgłoszeń bez powodu i niepingowanie — odpowiemy, gdy tylko będziemy dostępni.", color=0x6c5ce7)
+    await ctx.send(embed=emb, view=View().add_item(TicketSelect()))
 
-    await ctx.send(embed=embed, view=TicketLauncher())
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setup(ctx):
+    await ctx.message.delete()
+    await ctx.send(view=RegView())
 
 token = os.getenv('DISCORD_TOKEN')
 bot.run(token)
