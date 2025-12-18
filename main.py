@@ -3,84 +3,109 @@ import os
 import asyncio
 from discord.ext import commands
 from discord import app_commands
-from discord.ui import Select, View, Button, Modal, TextInput
+from discord.ui import View, Button
+
+# --- USTAWIAJĄC TE ID, BOT BĘDZIE WIEDZIAŁ GDZIE DZIAŁAĆ ---
+ID_KANALU_POWITAN = 1234567890  # ID kanału powitalnego
+ID_ROLI_WERYFIKACJA = 0987654321 # ID roli nadawanej po kliknięciu
+ID_KANALU_WERYFIKACJA = 1122334455 # ID kanału gdzie stoi panel weryfikacji
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+intents.invites = True 
+
 bot = commands.Bot(command_prefix='!', intents=intents)
+THEME_COLOR = 0x9b59b6 # Fioletowy kolor SwirHub
 
-# --- KONFIGURACJA POWITAŃ ---
-ID_KANALU_POWITAN = 1234567890  # <--- TUTAJ WPISZ ID SWOJEGO KANAŁU
+# Cache zaproszeń do śledzenia kto kogo zaprosił
+invites = {}
 
+# --- 1. WERYFIKACJA (STYL PRIME/DREAM) ---
+class VerifyView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Zweryfikuj się", style=discord.ButtonStyle.green, emoji="✅", custom_id="v_btn")
+    async def verify(self, interaction: discord.Interaction, button: Button):
+        role = interaction.guild.get_role(ID_ROLI_WERYFIKACJA)
+        if role in interaction.user.roles:
+            return await interaction.response.send_message("Jesteś już zweryfikowany!", ephemeral=True)
+        
+        await interaction.user.add_roles(role)
+        await interaction.response.send_message("✅ Pomyślnie zweryfikowano w **𝑺𝒘𝒊𝒓𝑯𝒖𝒃**!", ephemeral=True)
+
+# --- 2. POWITANIA + INVITE TRACKER ---
 @bot.event
 async def on_member_join(member):
     channel = bot.get_channel(ID_KANALU_POWITAN)
-    if channel:
-        emb = discord.Embed(
-            title="Witaj na serwerze!",
-            description=f"Siemanko {member.mention}! Cieszymy się, że jesteś z nami na **{member.guild.name}**.\nZajrzyj na regulamin i baw się dobrze!",
-            color=0x6c5ce7
-        )
-        emb.set_thumbnail(url=member.display_avatar.url)
-        emb.set_footer(text=f"Jesteś naszym {len(member.guild.members)} członkiem!")
-        await channel.send(embed=emb)
+    if not channel: return
 
-# --- SYSTEM TICKETÓW (Slash) ---
-class TicketControlView(View):
-    def __init__(self): super().__init__(timeout=None)
-    @discord.ui.button(label="Zamknij Zgłoszenie", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_t")
-    async def close_ticket(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("🔒 Usuwanie kanału za 5s...")
-        await asyncio.sleep(5)
-        await interaction.channel.delete()
+    # Logika śledzenia zaproszeń
+    inviter = "Nieznany"
+    try:
+        before = invites[member.guild.id]
+        after = await member.guild.invites()
+        for invite in before:
+            for new_invite in after:
+                if invite.code == new_invite.code and new_invite.uses > invite.uses:
+                    inviter = invite.inviter.mention
+                    break
+        invites[member.guild.id] = after
+    except: pass
 
-class TicketSelect(Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="Pomoc Ogólna", emoji="💎"),
-            discord.SelectOption(label="Zamówienie - Bot", emoji="🤖"),
-            discord.SelectOption(label="Zamówienie - Grafika", emoji="🎨"),
-            discord.SelectOption(label="Odbiór Nagrody", emoji="🎁")
-        ]
-        super().__init__(placeholder="Wybierz kategorię...", options=options, custom_id="t_select")
+    # Wygląd jak na screenie DreamCode
+    emb = discord.Embed(
+        title=f"💎 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 × WITAMY {member.name.upper()}",
+        description=(
+            f"Witaj na oficjalnym Discordzie serwera **𝑺𝒘𝒊𝒓𝑯𝒖𝒃**!\n"
+            f"Mamy nadzieję, że z nami zostaniesz!\n\n"
+            f"👤 **Użytkownik:** {member.mention}\n"
+            f"🔗 **Zaproszony przez:** {inviter}"
+        ),
+        color=THEME_COLOR
+    )
+    # Jeśli masz link do grafiki (np. fioletowe logo), wstaw je tutaj:
+    # emb.set_image(url="LINK_DO_TWOJEJ_GRAFIKI")
+    emb.set_thumbnail(url=member.display_avatar.url)
+    emb.set_footer(text=f"© 2021 - 2025 • 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 • Jesteś {len(member.guild.members)} członkiem")
+    
+    await channel.send(embed=emb)
 
-    async def callback(self, interaction: discord.Interaction):
-        ch_name = f"ticket-{interaction.user.name.lower()}"
-        overwrites = {
-            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
-        ch = await interaction.guild.create_text_channel(name=ch_name, overwrites=overwrites)
-        emb = discord.Embed(title=f"Zgłoszenie: {self.values[0]}", description=f"Witaj {interaction.user.mention}!\nOpisz swoją sprawę.", color=0x6c5ce7)
-        await ch.send(content=interaction.user.mention, embed=emb, view=TicketControlView())
-        await interaction.response.send_message(f"✅ Utworzono: {ch.mention}", ephemeral=True)
+# --- 3. START I SYNCHRONIZACJA ---
+@bot.event
+async def on_ready():
+    # Pobieranie zaproszeń na start
+    for guild in bot.guilds:
+        try: invites[guild.id] = await guild.invites()
+        except: pass
+    
+    bot.add_view(VerifyView())
+    print(f"✅ 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 Bot gotowy do akcji!")
 
-# --- SLASH COMMANDS ---
-@bot.tree.command(name="ticket_setup", description="Rozstawia panel ticketów")
-@app_commands.checks.has_permissions(administrator=True)
-async def ticket_setup(interaction: discord.Interaction):
-    emb = discord.Embed(title="💎 DREAMCODE × TICKETY", description="Jeśli potrzebujesz pomocy lub masz pytania, wybierz **Pomoc ogólną**.\n\nW sprawie zamówień lub wyceny skorzystaj z odpowiedniej kategorii w menu.\nJeżeli jesteś kupującym, wysyłaj środki wyłącznie na dane podane przez bota.\n\nAdministracja prosi o niezakładanie zgłoszeń bez powodu.", color=0x6c5ce7)
-    await interaction.response.send_message("Panel wysłany!", ephemeral=True)
-    await interaction.channel.send(embed=emb, view=View().add_item(TicketSelect()))
-
-@bot.tree.command(name="ping", description="Sprawdza opóźnienie bota")
-async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message(f"🏓 Pong! {round(bot.latency * 1000)}ms")
-
-# --- KOMENDA DO SYNCHRONIZACJI (Wpisz !sync raz) ---
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def sync(ctx):
     await bot.tree.sync()
-    await ctx.send("✅ Komendy `/` zostały zsynchronizowane!")
+    await ctx.send("✅ Slash commands zsynchronizowane!")
 
-@bot.event
-async def on_ready():
-    bot.add_view(View().add_item(TicketSelect()))
-    bot.add_view(TicketControlView())
-    print(f"Bot {bot.user} gotowy.")
+# --- 4. KOMENDA PANELU WERYFIKACJI ---
+@bot.tree.command(name="setup_weryfikacja", description="Wysyła profesjonalny panel weryfikacji")
+@app_commands.checks.has_permissions(administrator=True)
+async def v_setup(interaction: discord.Interaction):
+    emb = discord.Embed(
+        title="𝑺𝒘𝒊𝒓𝑯𝒖𝒃 — Weryfikacja",
+        description=(
+            "Aby uzyskać dostęp do serwera, musisz się zweryfikować.\n\n"
+            "Kliknij przycisk poniżej aby się zweryfikować."
+        ),
+        color=THEME_COLOR
+    )
+    # Możesz dodać obrazek weryfikacji jak na Twoim screenie:
+    # emb.set_image(url="LINK_DO_GRAFIKI_WERYFIKACJA")
+    
+    await interaction.channel.send(embed=emb, view=VerifyView())
+    await interaction.response.send_message("Panel wysłany!", ephemeral=True)
 
 token = os.getenv('DISCORD_TOKEN')
 bot.run(token)
