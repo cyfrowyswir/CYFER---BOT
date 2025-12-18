@@ -6,32 +6,28 @@ from discord import app_commands
 from discord.ui import View, Button, Select
 
 # --- KONFIGURACJA 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 ---
-ID_ROLI_WERYFIKACJA = 1234567890 
-ID_KANALU_POWITAN = 1234567890   
+ID_ROLI_WERYFIKACJA = 1234567890  # <--- WPISZ ID ROLI
+ID_KANALU_POWITAN = 1234567890    # <--- WPISZ ID KANAŁU
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.invites = True
 
-# Definiujemy bota
 class SwirHubBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        # Rejestracja widoków (żeby przyciski działały po restarcie)
+        # Rejestracja widoków, aby przyciski działały po restarcie
         self.add_view(VerifyView())
         self.add_view(TicketLauncher())
         self.add_view(TicketControlView())
-        
-        # Automatyczna synchronizacja przy starcie (opcjonalnie, ale pomaga)
-        # await self.tree.sync() 
 
 bot = SwirHubBot()
-THEME_COLOR = 0x9b59b6
+THEME_COLOR = 0x9b59b6 # Fiolet SwirHub
 
-# --- KOMPONENTY UI ---
+# --- SYSTEM TICKETÓW (NOWE OPCJE) ---
 class TicketControlView(View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="Zamknij Zgłoszenie", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_t")
@@ -43,10 +39,12 @@ class TicketControlView(View):
 class TicketSelect(Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Pomoc Ogólna", emoji="💎"),
-            discord.SelectOption(label="Zamówienie", emoji="🤖")
+            discord.SelectOption(label="Pomoc Ogólna", emoji="💎", description="Pytania i pomoc techniczna"),
+            discord.SelectOption(label="Zamówienie-MC", emoji="⛏️", description="Zamówienia związane z Minecraft"),
+            discord.SelectOption(label="Zamówienie-STUDIO", emoji="🎨", description="Projekty graficzne, boty, studio"),
+            discord.SelectOption(label="Odbiór Nagrody", emoji="🎁", description="Jeśli coś wygrałeś!")
         ]
-        super().__init__(placeholder="Wybierz kategorię...", options=options, custom_id="t_sel")
+        super().__init__(placeholder="Wybierz jedną z opcji która Cię interesuje...", options=options, custom_id="t_sel")
 
     async def callback(self, interaction: discord.Interaction):
         name = f"ticket-{interaction.user.name.lower()}"
@@ -56,55 +54,77 @@ class TicketSelect(Select):
             interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
         ch = await interaction.guild.create_text_channel(name=name, overwrites=overwrites)
-        emb = discord.Embed(title=f"Zgłoszenie: {self.values[0]}", description="Opisz swoją sprawę.", color=THEME_COLOR)
-        await ch.send(content=interaction.user.mention, embed=emb, view=TicketControlView())
-        await interaction.response.send_message(f"✅ Utworzono: {ch.mention}", ephemeral=True)
+        
+        emb = discord.Embed(
+            title=f"💎 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 • {self.values[0]}", 
+            description=f"Witaj {interaction.user.mention}!\nNapisz dokładnie, w czym możemy Ci pomóc, a administracja zaraz się pojawi.", 
+            color=THEME_COLOR
+        )
+        await ch.send(content=f"{interaction.user.mention} | <@&ROLA_ADMINISTRACJI_ID>", embed=emb, view=TicketControlView())
+        await interaction.response.send_message(f"✅ Utworzono zgłoszenie: {ch.mention}", ephemeral=True)
 
 class TicketLauncher(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(TicketSelect())
 
+# --- SYSTEM WERYFIKACJI ---
 class VerifyView(View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="Zweryfikuj się", style=discord.ButtonStyle.green, emoji="✅", custom_id="v_btn")
     async def verify(self, interaction: discord.Interaction, button: Button):
         role = interaction.guild.get_role(ID_ROLI_WERYFIKACJA)
+        if not role:
+            return await interaction.response.send_message("❌ Błąd: Nie znaleziono roli weryfikacyjnej!", ephemeral=True)
         try:
             await interaction.user.add_roles(role)
-            await interaction.response.send_message("✅ Zweryfikowano!", ephemeral=True)
+            await interaction.response.send_message("✅ Zostałeś pomyślnie zweryfikowany w **𝑺𝒘𝒊𝒓𝑯𝒖𝒃**!", ephemeral=True)
         except:
-            await interaction.response.send_message("❌ Błąd ról (sprawdź hierarchię)!", ephemeral=True)
+            await interaction.response.send_message("❌ Bot nie może nadać roli. Sprawdź czy rola bota jest wyżej niż rola weryfikacyjna!", ephemeral=True)
 
-# --- SLASH COMMANDS ---
-@bot.tree.command(name="ticket_setup", description="Panel ticketów")
-@app_commands.checks.has_permissions(administrator=True)
-async def t_setup(interaction: discord.Interaction):
-    emb = discord.Embed(title="💎 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 × TICKETY", description="Wybierz kategorię z menu poniżej.", color=THEME_COLOR)
-    await interaction.channel.send(embed=emb, view=TicketLauncher())
-    await interaction.response.send_message("Panel wysłany!", ephemeral=True)
-
-@bot.tree.command(name="verify_setup", description="Panel weryfikacji")
+# --- KOMENDY SLASH ---
+@bot.tree.command(name="verify_setup", description="Wysyła panel weryfikacji")
 @app_commands.checks.has_permissions(administrator=True)
 async def v_setup(interaction: discord.Interaction):
-    emb = discord.Embed(title="𝑺𝒘𝒊𝒓𝑯𝒖𝒃 — Weryfikacja", description="Kliknij przycisk poniżej.", color=THEME_COLOR)
+    emb = discord.Embed(
+        title="𝑺𝒘𝒊𝒓𝑯𝒖𝒃 — Weryfikacja",
+        description="Aby uzyskać dostęp do serwera, musisz się zweryfikować.\n\nKliknij przycisk poniżej aby się zweryfikować.",
+        color=THEME_COLOR
+    )
     await interaction.channel.send(embed=emb, view=VerifyView())
-    await interaction.response.send_message("Panel wysłany!", ephemeral=True)
+    await interaction.response.send_message("Panel weryfikacji wysłany!", ephemeral=True)
 
-# --- KOMENDA RATUNKOWA (WPISZ !sync) ---
+@bot.tree.command(name="ticket_setup", description="Wysyła panel ticketów")
+@app_commands.checks.has_permissions(administrator=True)
+async def t_setup(interaction: discord.Interaction):
+    emb = discord.Embed(
+        title="💎 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 × TICKETY",
+        description=(
+            "Jeśli potrzebujesz pomocy lub masz pytania, wybierz **Pomoc ogólną**.\n\n"
+            "W sprawie zamówień lub wyceny skorzystaj z odpowiedniej kategorii w menu.\n"
+            "Jeżeli jesteś kupującym, wysyłaj środki wyłącznie na dane podane przez bota.\n\n"
+            "Administracja oraz Zespół proszą o niezakładanie zgłoszeń bez powodu i niepingowanie — odpowiemy, gdy tylko będziemy dostępni."
+        ),
+        color=THEME_COLOR
+    )
+    await interaction.channel.send(embed=emb, view=TicketLauncher())
+    await interaction.response.send_message("Panel ticketów wysłany!", ephemeral=True)
+
+# --- KOMENDA SYNCHRONIZACJI ---
 @bot.command()
+@commands.has_permissions(administrator=True)
 async def sync(ctx):
     try:
-        # To wymusza rejestrację komend na Twoim konkretnym serwerze (działa szybciej)
+        # Rejestruje komendy bezpośrednio na Twoim serwerze (natychmiastowe działanie)
         bot.tree.copy_global_to(guild=ctx.guild)
         synced = await bot.tree.sync(guild=ctx.guild)
-        await ctx.send(f"✅ Zsynchronizowano {len(synced)} komend dla tego serwera!")
+        await ctx.send(f"✅ Zsynchronizowano {len(synced)} komend slash dla **𝑺𝒘𝒊𝒓𝑯𝒖𝒃**!")
     except Exception as e:
         await ctx.send(f"❌ Błąd synchronizacji: {e}")
 
 @bot.event
 async def on_ready():
-    print(f"✅ 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 Bot online jako {bot.user}")
+    print(f"✅ Zalogowano jako {bot.user}")
 
 token = os.getenv('DISCORD_TOKEN')
 bot.run(token)
