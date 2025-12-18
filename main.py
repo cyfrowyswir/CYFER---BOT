@@ -6,8 +6,8 @@ from discord import app_commands
 from discord.ui import View, Button, Select
 
 # --- KONFIGURACJA 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 ---
-ID_ROLI_WERYFIKACJA = 1234567890  # <--- WPISZ ID ROLI
-ID_KANALU_POWITAN = 1234567890    # <--- WPISZ ID KANAŁU
+ID_ROLI_WERYFIKACJA = 1451263520812568672  # <--- WPISZ ID ROLI
+ID_KANALU_POWITAN = 1451263521995362564    # <--- WPISZ ID KANAŁU
 
 intents = discord.Intents.default()
 intents.message_content = True
