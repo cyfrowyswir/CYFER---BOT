@@ -5,89 +5,114 @@ from discord.ui import Select, View
 
 # --- KONFIGURACJA ---
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = True # TO JEST KLUCZOWE
 intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# --- WIDOK TICKETA (PO OTWARCIU) ---
+# --- PANEL TICKETA (Po otwarciu) ---
 class TicketControlView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="🔒 Zamknij Ticket", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="🔒 Zamknij Ticket", style=discord.ButtonStyle.danger, emoji="🔒")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Zamykanie kanału za 5 sekund...")
+        await interaction.response.send_message("Zamykam ticket za 5 sekund...")
         await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.timedelta(seconds=5))
         await interaction.channel.delete()
 
-# --- ROZWIJANE MENU Z KATEGORIAMI ---
+# --- ROZWIJANE MENU (Select Menu) ---
 class TicketSelect(Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Pomoc Ogólna", description="Jeśli potrzebujesz wsparcia lub masz pytania.", emoji="💎"),
-            discord.SelectOption(label="Odbiór Nagrody", description="Jeśli chcesz odebrać nagrodę.", emoji="🎁"),
-            discord.SelectOption(label="Boty Discord", description="Jeśli chcesz zamówić bota.", emoji="🤖"),
-            discord.SelectOption(label="Plugin", description="Jeśli chcesz zamówić plugin.", emoji="🔌"),
-            discord.SelectOption(label="Grafika", description="Jeśli chcesz zamówić grafikę.", emoji="🎨"),
+            discord.SelectOption(label="Pomoc Ogólna", description="Pytania i wsparcie.", emoji="💎"),
+            discord.SelectOption(label="Odbiór Nagrody", description="Odbiór wygranej.", emoji="🎁"),
+            discord.SelectOption(label="Boty Discord", description="Zamówienie bota.", emoji="🤖"),
+            discord.SelectOption(label="Pluginy", description="Zamówienie pluginu.", emoji="🔌"),
+            discord.SelectOption(label="Grafika", description="Zamówienie grafiki.", emoji="🎨"),
         ]
-        super().__init__(placeholder="Wybierz jedną z opcji która Cię interesuje...", options=options)
+        super().__init__(placeholder="Wybierz temat zgłoszenia...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
+        # Tutaj dzieje się magia po wybraniu opcji
         guild = interaction.guild
-        user = interaction.user
+        category_name = self.values[0] # Np. "Grafika"
         
-        # Tworzenie uprawnień dla nowego kanału
+        # Tworzymy nazwę kanału (np. ticket-grafika-nick)
+        channel_name = f"ticket-{category_name.lower().replace(' ', '-')}-{interaction.user.name}"
+        
+        # Uprawnienia: Tylko Admin, Bot i Użytkownik widzą kanał
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
-        
-        # Nazwa kanału na podstawie wyboru
-        category_name = self.values[0].lower().replace(" ", "-")
-        channel = await guild.create_text_channel(f"ticket-{category_name}-{user.name}", overwrites=overwrites)
-        
-        # Wiadomość powitalna w tickecie
-        embed = discord.Embed(
-            title=f"Ticket: {self.values[0]}",
-            description=f"Witaj {user.mention}! Zaraz ktoś z administracji Ci pomoże.\nOpisz swój problem poniżej.",
-            color=0x9b59b6 # Fioletowy jak na screenie
-        )
-        
-        await channel.send(embed=embed, view=TicketControlView())
-        await interaction.response.send_message(f"✅ Otwarto ticket: {channel.mention}", ephemeral=True)
+
+        # Tworzenie kanału
+        try:
+            channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
+            
+            # Wiadomość w środku nowego kanału
+            embed = discord.Embed(
+                title=f"Nowe zgłoszenie: {category_name}",
+                description=f"Witaj {interaction.user.mention}!\nOpisz dokładnie swój problem. Administracja zaraz odpisze.",
+                color=0x9b59b6
+            )
+            await channel.send(embed=embed, view=TicketControlView())
+            
+            # Informacja zwrotna (tylko dla klikającego)
+            await interaction.response.send_message(f"✅ Utworzono ticket: {channel.mention}", ephemeral=True)
+            
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Błąd przy tworzeniu kanału: {e}", ephemeral=True)
 
 class TicketView(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(TicketSelect())
 
-# --- KOMENDY ---
+# --- START I KOMENDY ---
 @bot.event
 async def on_ready():
-    print(f'✅ Bot ticketowy {bot.user} gotowy!')
+    print(f'✅ ZALOGOWANO JAKO: {bot.user}')
+    print('✅ Czekam na komendy...')
 
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def ticket_setup(ctx):
-    await ctx.message.delete()
-    
+    # Próbujemy usunąć Twoją wiadomość, ale jak się nie uda, to trudno - idziemy dalej
+    try:
+        await ctx.message.delete()
+    except:
+        pass 
+
     embed = discord.Embed(
         title="💎 DREAMCODE × TICKETY",
         description=(
             "Jeżeli potrzebujesz pomocy, wsparcia lub masz pytania, skorzystaj z opcji **Pomoc Ogólna**.\n\n"
-            "Jeżeli chcesz złożyć zamówienie bądź dowiedzieć się o przewidywanych kosztach skorzystaj z poprawnej kategorii w **poniższym menu**.\n\n"
-            "Jeżeli jesteś **kupcem** pamiętaj, że pieniądze wysyłasz tylko na dane podane **przez bota**.\n\n"
-            "~ Jako Administracja oraz Zespół prosimy o nie otwieranie zgłoszeń **dla zabawy** oraz o nie pingowanie nas, odpiszemy w wolnej chwili."
+            "Jeżeli chcesz złożyć zamówienie, wybierz odpowiednią kategorię w **menu poniżej**.\n\n"
+            "⚠️ Nie otwieraj ticketów dla zabawy!"
         ),
         color=0x9b59b6
     )
-    # Tutaj możesz wstawić link do grafiki ze swojego screena
-    embed.set_image(url="TU_WKLEJ_LINK_DO_OBRAZKA_Z_LOGO")
-    embed.set_footer(text="© 2021 - 2025 • TwojaNazwa.pl")
+    # Pamiętaj, żeby tu wkleić swój link do obrazka
+    # embed.set_image(url="LINK_DO_OBRAZKA")
     
     await ctx.send(embed=embed, view=TicketView())
 
+# --- DIAGNOSTYKA BŁĘDÓW ---
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("⛔ Nie masz uprawnień Administratora!")
+    elif isinstance(error, commands.CommandNotFound):
+        # Bot ignoruje błędne komendy, żeby nie spamować
+        pass
+    else:
+        print(f"BŁĄD: {error}") # Zobaczysz to w logach Koyeb
+
 token = os.getenv('DISCORD_TOKEN')
-bot.run(token)
+if token:
+    bot.run(token)
+else:
+    print("❌ Nie znaleziono tokena!")
