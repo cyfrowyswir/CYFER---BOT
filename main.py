@@ -25,6 +25,7 @@ class SwirHubBot(commands.Bot):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
+        # To sprawia, że przyciski działają nawet po restarcie bota
         self.add_view(VerifyView())
         self.add_view(TicketLauncher())
         self.add_view(TicketControlView())
@@ -49,131 +50,126 @@ class GiveawayView(View):
     @discord.ui.button(label="Dołącz 🎉", style=discord.ButtonStyle.blurple, custom_id="join_giveaway")
     async def join_button(self, interaction: discord.Interaction, button: Button):
         if interaction.user in self.participants:
-            return await interaction.response.send_message("❌ Już bierzesz udział w tym konkursie!", ephemeral=True)
+            return await interaction.response.send_message("❌ Już bierzesz udział!", ephemeral=True)
         
         self.participants.append(interaction.user)
-        await interaction.response.send_message("✅ Pomyślnie dołączono do konkursu!", ephemeral=True)
-        
-        # Aktualizacja licznika w oryginalnym embedzie
         embed = interaction.message.embeds[0]
         embed.set_footer(text=f"Uczestników: {len(self.participants)} | Powodzenia!")
         await interaction.message.edit(embed=embed)
+        await interaction.response.send_message("✅ Dołączyłeś do konkursu!", ephemeral=True)
 
 class KonkursModal(Modal, title="Uruchom Konkurs 𝑺𝒘𝒊𝒓𝑯𝒖𝒃"):
-    nagroda = TextInput(label="Nagroda", placeholder="Co jest do wygrania?", required=True)
-    czas = TextInput(label="Czas trwania (np. 30s, 10m, 2h)", placeholder="Np. 15m", required=True)
-    opis = TextInput(label="Zasady", style=discord.TextStyle.paragraph, required=False)
+    nagroda = TextInput(label="Nagroda", placeholder="Co wygrywamy?", required=True)
+    czas = TextInput(label="Czas (np. 30s, 10m, 2h)", placeholder="Np. 10m", required=True)
+    opis = TextInput(label="Dodatkowe info", style=discord.TextStyle.paragraph, required=False)
 
     async def on_submit(self, interaction: discord.Interaction):
         seconds = parse_duration(self.czas.value)
-        if seconds is None:
-            return await interaction.response.send_message("❌ Zły format czasu (użyj s, m, h)!", ephemeral=True)
+        if not seconds:
+            return await interaction.response.send_message("❌ Zły format czasu!", ephemeral=True)
 
         view = GiveawayView(timeout=seconds)
         emb = discord.Embed(
-            title="🎉 NOWY KONKURS 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 🎉",
-            description=f"**Nagroda:** {self.nagroda.value}\n\n**Zasady:** Kliknij przycisk poniżej!\n**Czas:** {self.czas.value}\n{f'**Info:** {self.opis.value}' if self.opis.value else ''}",
+            title="🎉 NOWY KONKURS 🎉",
+            description=f"**Nagroda:** {self.nagroda.value}\n**Czas:** {self.czas.value}\n{self.opis.value if self.opis.value else ''}",
             color=discord.Color.gold(),
             timestamp=datetime.now()
         )
-        emb.set_footer(text="Uczestników: 0 | Powodzenia!")
+        emb.set_footer(text="Uczestników: 0")
         
-        await interaction.response.send_message("✅ Konkurs wystartował!", ephemeral=True)
+        await interaction.response.send_message("✅ Wystartowano!", ephemeral=True)
         msg = await interaction.channel.send(content="@everyone", embed=emb, view=view)
 
         await asyncio.sleep(seconds)
-
-        # Wyłączenie przycisku po czasie
-        view.clear_items()
-        view.stop()
         
         if len(view.participants) > 0:
             winner = random.choice(view.participants)
-            end_emb = discord.Embed(
-                title="🎊 WYNIKI KONKURSU 🎊",
-                description=f"**Nagroda:** {self.nagroda.value}\n**Zwycięzca:** {winner.mention}\n**Liczba uczestników:** {len(view.participants)}",
-                color=discord.Color.green()
-            )
-            await interaction.channel.send(content=f"Gratulacje {winner.mention}!", embed=end_emb)
-            await msg.edit(content="🏁 **KONKURS ZAKOŃCZONY** 🏁", view=None)
+            await interaction.channel.send(f"🎊 Konkurs zakończony! Wygrywa: {winner.mention} (**{self.nagroda.value}**)")
         else:
             await interaction.channel.send(f"❌ Nikt nie dołączył do konkursu na **{self.nagroda.value}**.")
-            await msg.edit(content="🏁 **KONKURS ZAKOŃCZONY (Brak uczestników)** 🏁", view=None)
+        await msg.edit(view=None)
 
-# --- POZOSTAŁE KOMENDY MODERACYJNE I SYSTEMY ---
+# --- TICKET SYSTEM ---
 
-@bot.tree.command(name="konkurs")
-@app_commands.checks.has_permissions(administrator=True)
-async def konkurs(interaction): await interaction.response.send_modal(KonkursModal())
+class TicketControlView(View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.button(label="Zamknij", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_ticket_btn")
+    async def close(self, interaction, button):
+        await interaction.response.send_message("🔒 Zamykanie za 5s...")
+        await asyncio.sleep(5)
+        await interaction.channel.delete()
 
-@bot.tree.command(name="tekst")
-@app_commands.checks.has_permissions(administrator=True)
-async def tekst(interaction): await interaction.response.send_modal(TekstModal())
+class TicketLauncher(View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.select(
+        placeholder="Wybierz kategorię zgłoszenia...",
+        custom_id="ticket_select_menu",
+        options=[
+            discord.SelectOption(label="Pomoc Ogólna", emoji="💎"),
+            discord.SelectOption(label="Zamówienie-MC", emoji="⛏️"),
+            discord.SelectOption(label="Zamówienie-STUDIO", emoji="🎨"),
+            discord.SelectOption(label="Odbiór Nagrody", emoji="🎁")
+        ]
+    )
+    async def callback(self, interaction, select):
+        name = f"ticket-{interaction.user.name.lower()}"
+        overwrites = {
+            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        ch = await interaction.guild.create_text_channel(name=name, overwrites=overwrites)
+        emb = discord.Embed(title=f"Ticket: {select.values[0]}", description="Opisz swój problem.", color=THEME_COLOR)
+        await ch.send(content=f"{interaction.user.mention} | <@&{ID_ROLI_ADMINISTRACJI}>", embed=emb, view=TicketControlView())
+        await interaction.response.send_message(f"✅ Kanał: {ch.mention}", ephemeral=True)
 
-@bot.tree.command(name="clear")
-@app_commands.checks.has_permissions(manage_messages=True)
-async def clear(interaction, ilosc: int):
-    await interaction.channel.purge(limit=ilosc)
-    await interaction.response.send_message(f"✅ Usunięto {ilosc} wiadomości.", ephemeral=True)
-
-@bot.tree.command(name="weryfikacja")
-@app_commands.checks.has_permissions(administrator=True)
-async def v_setup(interaction):
-    await interaction.channel.send(embed=discord.Embed(title="𝑺𝒘𝒊𝒓𝑯𝒖𝒃 — Weryfikacja", description="Kliknij przycisk poniżej!", color=THEME_COLOR), view=VerifyView())
-    await interaction.response.send_message("Wysłano!", ephemeral=True)
-
-@bot.tree.command(name="ticket")
-@app_commands.checks.has_permissions(administrator=True)
-async def t_setup(interaction):
-    await interaction.channel.send(embed=discord.Embed(title="💎 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 × TICKETY", description="Wybierz kategorię.", color=THEME_COLOR), view=TicketLauncher())
-    await interaction.response.send_message("Wysłano!", ephemeral=True)
-
-# --- KLASY DLA TICKETÓW I WERYFIKACJI ---
-
-class TekstModal(Modal, title="Embed 𝑺𝒘𝒊𝒓𝑯𝒖𝒃"):
-    t = TextInput(label="Tytuł"); o = TextInput(label="Opis", style=discord.TextStyle.paragraph)
-    async def on_submit(self, interaction):
-        await interaction.channel.send(embed=discord.Embed(title=self.t.value, description=self.o.value, color=THEME_COLOR))
-        await interaction.response.send_message("✅", ephemeral=True)
+# --- WERYFIKACJA ---
 
 class VerifyView(View):
     def __init__(self): super().__init__(timeout=None)
-    @discord.ui.button(label="Weryfikacja", style=discord.ButtonStyle.green, emoji="✅", custom_id="v_btn")
+    @discord.ui.button(label="Weryfikacja", style=discord.ButtonStyle.green, emoji="✅", custom_id="verify_btn")
     async def verify(self, interaction, button):
         role = interaction.guild.get_role(ID_ROLI_WERYFIKACJA)
         await interaction.user.add_roles(role)
         await interaction.response.send_message("✅ Zweryfikowano!", ephemeral=True)
 
-class TicketControlView(View):
-    def __init__(self): super().__init__(timeout=None)
-    @discord.ui.button(label="Zamknij", style=discord.ButtonStyle.danger, emoji="🔒")
-    async def close(self, interaction, button):
-        await interaction.response.send_message("🔒 Usuwanie kanału..."); await asyncio.sleep(5); await interaction.channel.delete()
+# --- KOMENDY SLASH ---
 
-class TicketLauncher(View):
-    def __init__(self): super().__init__(timeout=None)
-    @discord.ui.select(placeholder="Wybierz kategorię...", options=[
-        discord.SelectOption(label="Pomoc Ogólna", emoji="💎"),
-        discord.SelectOption(label="Zamówienie-MC", emoji="⛏️"),
-        discord.SelectOption(label="Zamówienie-STUDIO", emoji="🎨")
-    ])
-    async def callback(self, interaction, select):
-        overwrites = {interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False), interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True)}
-        ch = await interaction.guild.create_text_channel(name=f"ticket-{interaction.user.name}", overwrites=overwrites)
-        await ch.send(content=f"{interaction.user.mention} | <@&{ID_ROLI_ADMINISTRACJI}>", embed=discord.Embed(title=f"Kategoria: {select.values[0]}", color=THEME_COLOR), view=TicketControlView())
-        await interaction.response.send_message(f"✅ {ch.mention}", ephemeral=True)
+@bot.tree.command(name="konkurs", description="Startuje konkurs")
+@app_commands.checks.has_permissions(administrator=True)
+async def konkurs_cmd(interaction):
+    await interaction.response.send_modal(KonkursModal())
 
-# --- URUCHOMIENIE ---
+@bot.tree.command(name="weryfikacja", description="Panel weryfikacji")
+@app_commands.checks.has_permissions(administrator=True)
+async def v_cmd(interaction):
+    emb = discord.Embed(title="Weryfikacja 𝑺𝒘𝒊𝒓𝑯𝒖𝒃", description="Kliknij przycisk!", color=THEME_COLOR)
+    await interaction.channel.send(embed=emb, view=VerifyView())
+    await interaction.response.send_message("Wysłano!", ephemeral=True)
+
+@bot.tree.command(name="ticket", description="Panel ticketów")
+@app_commands.checks.has_permissions(administrator=True)
+async def t_cmd(interaction):
+    emb = discord.Embed(title="Tickety 𝑺𝒘𝒊𝒓𝑯𝒖𝒃", description="Wybierz kategorię z menu.", color=THEME_COLOR)
+    await interaction.channel.send(embed=emb, view=TicketLauncher())
+    await interaction.response.send_message("Wysłano!", ephemeral=True)
+
+@bot.tree.command(name="clear", description="Usuwa wiadomości")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clear_cmd(interaction, ilosc: int):
+    await interaction.channel.purge(limit=ilosc)
+    await interaction.response.send_message(f"✅ Usunięto {ilosc} wiadomości.", ephemeral=True)
+
 @bot.command()
+@commands.has_permissions(administrator=True)
 async def sync(ctx):
-    bot.tree.copy_global_to(guild=ctx.guild)
-    await bot.tree.sync(guild=ctx.guild)
-    await ctx.send("✅ Zsynchronizowano komendy dla **𝑺𝒘𝒊𝒓𝑯𝒖𝒃**.")
+    synced = await bot.tree.sync()
+    await ctx.send(f"✅ Zsynchronizowano {len(synced)} komend.")
 
 @bot.event
 async def on_ready():
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="𝑺𝒘𝒊𝒓𝑯𝒖𝒃"))
-    print(f"✅ Zalogowano jako {bot.user}")
+    print(f"✅ Bot online jako {bot.user}")
 
 token = os.getenv('DISCORD_TOKEN')
 bot.run(token)
