@@ -109,32 +109,24 @@ class VerifyView(View):
             await interaction.user.add_roles(role)
             await interaction.response.send_message("✅ Zweryfikowano!", ephemeral=True)
 
-# --- KOMENDY SLASH ---
+# --- KOMENDY SLASH (UPROSZCZONE) ---
 
 @bot.tree.command(name="tekst", description="Otwiera UI do wysłania własnego tekstu w Embedzie")
 @app_commands.checks.has_permissions(administrator=True)
 async def tekst(interaction: discord.Interaction):
-    # Otwiera okno modalne
     await interaction.response.send_modal(TekstModal())
 
-@bot.tree.command(name="regulamin", description="Wysyła regulamin serwera")
-@app_commands.checks.has_permissions(administrator=True)
-async def regulamin(interaction: discord.Interaction):
-    emb = discord.Embed(title="📜 Regulamin 𝑺𝒘𝒊𝒓𝑯𝒖𝒃", description="1. Szacunek\n2. Brak spamu\n3. Zakaz reklam.", color=THEME_COLOR)
-    await interaction.channel.send(embed=emb)
-    await interaction.response.send_message("Wysłano!", ephemeral=True)
-
-@bot.tree.command(name="verify_setup", description="Wysyła panel weryfikacji")
+@bot.tree.command(name="weryfikacja", description="Wysyła panel weryfikacji")
 @app_commands.checks.has_permissions(administrator=True)
 async def v_setup(interaction: discord.Interaction):
-    emb = discord.Embed(title="𝑺𝒘𝒊𝒓𝑯𝒖𝒃 — Weryfikacja", description="Kliknij przycisk poniżej.", color=THEME_COLOR)
+    emb = discord.Embed(title="𝑺𝒘𝒊𝒓𝑯𝒖𝒃 — Weryfikacja", description="Kliknij przycisk poniżej, aby uzyskać dostęp do serwera.", color=THEME_COLOR)
     await interaction.channel.send(embed=emb, view=VerifyView())
     await interaction.response.send_message("Panel wysłany!", ephemeral=True)
 
-@bot.tree.command(name="ticket_setup", description="Wysyła panel ticketów")
+@bot.tree.command(name="ticket", description="Wysyła panel ticketów")
 @app_commands.checks.has_permissions(administrator=True)
 async def t_setup(interaction: discord.Interaction):
-    emb = discord.Embed(title="💎 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 × TICKETY", description="Wybierz kategorię.", color=THEME_COLOR)
+    emb = discord.Embed(title="💎 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 × TICKETY", description="Wybierz kategorię z menu poniżej.", color=THEME_COLOR)
     await interaction.channel.send(embed=emb, view=TicketLauncher())
     await interaction.response.send_message("Panel wysłany!", ephemeral=True)
 
@@ -149,7 +141,7 @@ async def sync(ctx):
 async def on_ready():
     activity = discord.Activity(type=discord.ActivityType.watching, name="𝑺𝒘𝒊𝒓𝑯𝒖𝒃")
     await bot.change_presence(status=discord.Status.online, activity=activity)
-    print(f"✅ Gotowy: {bot.user}")
+    print(f"✅ Bot gotowy jako {bot.user}")
 
 token = os.getenv('DISCORD_TOKEN')
 bot.run(token)
