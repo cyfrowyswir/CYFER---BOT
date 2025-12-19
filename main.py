@@ -10,32 +10,35 @@ class SwirHub(commands.Bot):
         super().__init__(command_prefix='!', intents=intents, help_command=None)
 
     async def setup_hook(self):
+        # Ładowanie modułów z folderu cogs
         for filename in os.listdir('./cogs'):
             if filename.endswith('.py') and filename != '__init__.py':
-                await self.load_extension(f'cogs.{filename[:-3]}')
+                try:
+                    await self.load_extension(f'cogs.{filename[:-3]}')
+                    print(f"✅ Załadowano moduł: {filename}")
+                except Exception as e:
+                    print(f"❌ Błąd modułu {filename}: {e}")
         
-        # Próbujemy synchronizować, ale nie pozwalamy, by błąd zawiesił bota
-        try:
-            await self.tree.sync()
-            print("✅ Synchronizacja przy starcie zakończona.")
-        except Exception as e:
-            print(f"⚠️ Nie udało się zsynchronizować przy starcie: {e}")
+        # Automatyczna synchronizacja przy starcie
+        await self.tree.sync()
 
     async def on_ready(self):
-        print(f"✅ SwirHub aktywny jako {self.user}")
+        print(f"✅ System SwirHub aktywny jako {self.user}")
 
 bot = SwirHub()
 
+# POPRAWIONA KOMENDA NAPRAWCZA
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def napraw(ctx):
-    await ctx.send("🧹 Rozpoczynam czyszczenie... Sprawdź logi na Koyeb, jeśli to potrwa zbyt długo.")
+    await ctx.send("⏳ Sprzątanie komend slash... proszę czekać.")
     try:
-        bot.tree.clear(guild=None)
+        # Usuwamy komendy przez przypisanie pustej listy i synchronizację
+        bot.tree.clear_commands(guild=None)
         await bot.tree.sync()
-        await ctx.send("💎 Gotowe! Zrestartuj teraz Discorda (Ctrl+R).")
+        await ctx.send("💎 **Sukces!** Stare komendy usunięte. Zrób teraz **Ctrl+R** na Discordzie.")
     except Exception as e:
-        await ctx.send(f"❌ Błąd krytyczny: {e}")
-        print(f"Błąd synchronizacji: {e}")
+        await ctx.send(f"❌ Wystąpił błąd: {e}")
+        print(f"Błąd naprawy: {e}")
 
 bot.run(os.getenv('DISCORD_TOKEN'))
