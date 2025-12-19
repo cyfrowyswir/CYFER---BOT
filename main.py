@@ -8,12 +8,11 @@ from discord import app_commands
 from discord.ui import View, Button, Select, Modal, TextInput
 from datetime import datetime
 
-# --- ARTEFAKTY KONFIGURACJI 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 ---
+# --- KONFIGURACJA 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 ---
 ID_ROLI_WERYFIKACJA = 1451263520812568672 
 ID_KANALU_POWITAN = 1451263521995362564   
 ID_ROLI_ADMINISTRACJI = 1451263520795529338
-ID_KANALU_LOGI = 1451263526848167956
-THEME_COLOR = 0x9b59b6
+THEME_COLOR = 0x9b59b6 # Królewski fiolet
 
 intents = discord.Intents.default()
 intents.members = True
@@ -24,7 +23,7 @@ class SwirHubBot(commands.Bot):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        # Pieczęcie trwałości dla systemów interaktywnych
+        # Rejestracja widoków dla trwałości przycisków
         self.add_view(VerifyView())
         self.add_view(TicketLauncher())
         self.add_view(TicketControlView())
@@ -40,16 +39,21 @@ bot = SwirHubBot()
 
 # --- 📜 MODAL: PISMO KRÓLEWSKIE (/tekst) ---
 class TekstModal(Modal, title="🖋️ Redagowanie Pisma"):
-    tytul = TextInput(label="Nagłówek Pisma", placeholder="Wpisz tytuł ogłoszenia...", min_length=1)
-    tresc = TextInput(label="Treść Przesłania", style=discord.TextStyle.paragraph, placeholder="Co chcesz ogłosić swoim poddanym?", min_length=1)
+    tytul = TextInput(label="Nagłówek", placeholder="Wpisz tytuł...", min_length=1)
+    tresc = TextInput(label="Treść", style=discord.TextStyle.paragraph, placeholder="Twoje przesłanie...", min_length=1)
 
     async def on_submit(self, interaction: discord.Interaction):
-        emb = discord.Embed(title=f"📜 {self.tytul.value}", description=self.tresc.value, color=THEME_COLOR, timestamp=datetime.now())
-        emb.set_footer(text="𝑺𝒘𝒊𝒓𝑯𝒖𝒃 • Oficjalne Obwieszczenie")
+        emb = discord.Embed(
+            title=f"📜 {self.tytul.value}", 
+            description=f"\n{self.tresc.value}\n", 
+            color=THEME_COLOR, 
+            timestamp=datetime.now()
+        )
+        emb.set_footer(text="𝑺𝒘𝒊𝒓𝑯𝒖𝒃 • Oficjalny Dekret")
         await interaction.channel.send(embed=emb)
         await interaction.response.send_message("✅ Pismo zostało rozesłane!", ephemeral=True)
 
-# --- 🎁 WIELKIE IGRZYSKA (KONKURSY) ---
+# --- 🎁 IGRZYSKA (KONKURSY) ---
 class GiveawayView(View):
     def __init__(self, timeout):
         super().__init__(timeout=timeout)
@@ -58,27 +62,27 @@ class GiveawayView(View):
     @discord.ui.button(label="Biorę udział!", style=discord.ButtonStyle.secondary, emoji="✨", custom_id="join_g")
     async def join(self, interaction: discord.Interaction, button: Button):
         if interaction.user in self.participants:
-            return await interaction.response.send_message("🛡️ Twój los już spoczywa w urnie!", ephemeral=True)
+            return await interaction.response.send_message("🛡️ Już jesteś na liście!", ephemeral=True)
         self.participants.append(interaction.user)
         emb = interaction.message.embeds[0]
         emb.set_footer(text=f"👥 Uczestników: {len(self.participants)} | 𝑺𝒘𝒊𝒓𝑯𝒖𝒃")
         await interaction.message.edit(embed=emb)
-        await interaction.response.send_message("🎯 Powodzenia, wędrowcze!", ephemeral=True)
+        await interaction.response.send_message("🎯 Twoje imię zapisano w zwojach!", ephemeral=True)
 
 class KonkursModal(Modal, title="🎁 Organizacja Igrzysk"):
-    nagroda = TextInput(label="Co chcesz podarować?", placeholder="np. Ranga VIP", min_length=1)
-    czas = TextInput(label="Czas trwania (s/m/h)", placeholder="np. 1h", max_length=5)
+    nagroda = TextInput(label="Nagroda", placeholder="np. Ranga VIP", min_length=1)
+    czas = TextInput(label="Czas (s/m/h)", placeholder="np. 1h", max_length=5)
     opis = TextInput(label="Zasady", style=discord.TextStyle.paragraph, required=False)
 
     async def on_submit(self, interaction: discord.Interaction):
         units = {"s": 1, "m": 60, "h": 3600}
         match = re.match(r"(\d+)([smh])", self.czas.value.lower())
-        if not match: return await interaction.response.send_message("❌ Zły format czasu!", ephemeral=True)
+        if not match: return await interaction.response.send_message("❌ Zły czas!", ephemeral=True)
         
         seconds = int(match.group(1)) * units[match.group(2)]
         view = GiveawayView(timeout=seconds)
         emb = discord.Embed(title="✨ 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 GIVEAWAY ✨", color=0xFFD700, timestamp=datetime.now())
-        emb.add_field(name="🏆 Nagroda", value=f"```yaml\n{self.nagroda.value}```", inline=False)
+        emb.add_field(name="🏆 Nagroda", value=f"```fix\n{self.nagroda.value}```", inline=False)
         if self.opis.value: emb.add_field(name="📜 Zasady", value=f"> {self.opis.value}", inline=False)
         emb.set_footer(text="Kliknij ✨, aby dołączyć!")
         
@@ -91,24 +95,24 @@ class KonkursModal(Modal, title="🎁 Organizacja Igrzysk"):
             res = discord.Embed(title="🎊 MAMY ZWYCIĘZCĘ! 🎊", color=THEME_COLOR, description=f"Los wskazał na {winner.mention}!\nNagroda: **{self.nagroda.value}**")
             await interaction.channel.send(content=f"🎉 Gratulacje {winner.mention}!", embed=res)
         else:
-            await interaction.channel.send("😥 Igrzyska dobiegły końca bez uczestników.")
+            await interaction.channel.send("😥 Igrzyska zakończone bez chętnych.")
         await msg.edit(view=None)
 
-# --- 🏛️ AUDIENCJA U WŁADCY (TICKETY) ---
+# --- 🏛️ AUDIENCJA (UPRAWDZIWIONE TICKETY) ---
 class TicketControlView(View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="Zakończ audiencję", style=discord.ButtonStyle.danger, emoji="🔒")
     async def close(self, interaction, button):
-        await interaction.response.send_message("🔒 Komnata zostanie zamknięta za 5s...")
+        await interaction.response.send_message("🔒 Komnata zostanie zapieczętowana za 5s...")
         await asyncio.sleep(5)
         await interaction.channel.delete()
 
 class TicketLauncher(View):
     def __init__(self): super().__init__(timeout=None)
-    @discord.ui.select(placeholder="Wybierz temat rozmowy...", custom_id="t_select", options=[
-        discord.SelectOption(label="Pomoc Techniczna", emoji="🛠️", description="Gdy mechanizmy krainy zawiodą"),
+    @discord.ui.select(placeholder="Wybierz powód audiencji...", custom_id="t_select", options=[
+        discord.SelectOption(label="Pomoc Techniczna", emoji="🛠️", description="Gdy mechanizmy krainy zawodzą"),
         discord.SelectOption(label="Skarbiec (Zamówienia)", emoji="💰", description="Wymiana złota na cenne rangi"),
-        discord.SelectOption(label="Współpraca", emoji="🤝", description="Dla sojuszników pragnących przymierza")
+        discord.SelectOption(label="Przymierze (Współpraca)", emoji="🤝", description="Dla poszukujących sojuszu")
     ])
     async def callback(self, interaction, select):
         overwrites = {
@@ -117,55 +121,83 @@ class TicketLauncher(View):
             interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
         ch = await interaction.guild.create_text_channel(name=f"🆘-{interaction.user.name}", overwrites=overwrites)
+        
         emb = discord.Embed(title="🏛️ PRYWATNA AUDIENCJA", color=THEME_COLOR)
-        emb.description = f"Witaj {interaction.user.mention} w komnatach **𝑺𝒘𝒊𝒓𝑯𝒖𝒃**.\nStrażnicy zostali powiadomieni o Twej prośbie.\n\n> **Temat:** `{select.values[0]}`\n\nOpisz swe potrzeby, a administratorzy wkrótce przybędą."
+        emb.description = (
+            f"Witaj, wędrowcze {interaction.user.mention}.\n"
+            "Strażnicy Skarbca zostali powiadomieni o Twoim przybyciu.\n\n"
+            f"**Powód:** `{select.values[0]}`\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "> Opisz swą prośbę cierpliwie, a pomoc nadejdzie."
+        )
+        emb.set_footer(text="𝑺𝒘𝒊𝒓𝑯𝒖𝒃 • System Audiencji")
+        
         await ch.send(content=f"{interaction.user.mention} | <@&{ID_ROLI_ADMINISTRACJI}>", embed=emb, view=TicketControlView())
         await interaction.response.send_message(f"✅ Otwarto komnatę: {ch.mention}", ephemeral=True)
 
-# --- 🛸 BRAMA WERYFIKACYJNA ---
+# --- 🛸 WERYFIKACJA ---
 class VerifyView(View):
     def __init__(self): super().__init__(timeout=None)
     @discord.ui.button(label="Odbierz dostęp", style=discord.ButtonStyle.primary, emoji="🛸", custom_id="v_b")
     async def verify(self, interaction, button):
         role = interaction.guild.get_role(ID_ROLI_WERYFIKACJA)
-        await interaction.user.add_roles(role)
-        await interaction.response.send_message("🛸 Weryfikacja pomyślna. Witaj w 𝑺𝒘𝒊𝒓𝑯𝒖𝒃!", ephemeral=True)
+        if role:
+            await interaction.user.add_roles(role)
+            await interaction.response.send_message("🛸 Weryfikacja udana. Witaj w królestwie!", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Błąd konfiguracji roli.", ephemeral=True)
 
-# --- 🛡️ KOMENDY SLASH (USUWANIE STARYCH, DODAWANIE NOWYCH) ---
-@bot.tree.command(name="tekst", description="Tworzy piękne, starożytne ogłoszenie")
-async def tekst_cmd(interaction): await interaction.response.send_modal(TekstModal())
+# --- ⚔️ KOMENDY SLASH (CZYSTY KODEKS) ---
 
-@bot.tree.command(name="weryfikacja", description="Panel weryfikacji")
-async def verif_cmd(interaction):
-    emb = discord.Embed(title="🛸 BRAMA WERYFIKACJI", color=THEME_COLOR)
-    emb.description = "Aby stać się pełnoprawnym mieszkańcem **𝑺𝒘𝒊𝒓𝑯𝒖𝒃**, dotknij poniższego symbolu."
+@bot.tree.command(name="tekst", description="Redaguje oficjalne pismo królestwa")
+async def tekst_cmd(interaction: discord.Interaction):
+    await interaction.response.send_modal(TekstModal())
+
+@bot.tree.command(name="weryfikacja", description="Rozstawia bramę weryfikacyjną")
+@app_commands.checks.has_permissions(administrator=True)
+async def verif_cmd(interaction: discord.Interaction):
+    emb = discord.Embed(
+        title="🛸 BRAMA WERYFIKACYJNA", 
+        description="Aby ujrzeć pełnię królestwa **𝑺𝒘𝒊𝒓𝑯𝒖𝒃**, dotknij poniższego symbolu.", 
+        color=THEME_COLOR
+    )
     await interaction.channel.send(embed=emb, view=VerifyView())
-    await interaction.response.send_message("Brama została postawiona.", ephemeral=True)
+    await interaction.response.send_message("✅ Brama postawiona.", ephemeral=True)
 
-@bot.tree.command(name="ticket", description="Panel audiencji (Tickety)")
-async def ticket_cmd(interaction):
-    emb = discord.Embed(title="📩 POTRZEBUJESZ POMOCY?", color=THEME_COLOR)
-    emb.description = "Wybierz temat z menu poniżej, a otworzymy dla Ciebie prywatną audiencję u administratorów."
+@bot.tree.command(name="ticket", description="Tworzy panel audiencji")
+@app_commands.checks.has_permissions(administrator=True)
+async def ticket_cmd(interaction: discord.Interaction):
+    emb = discord.Embed(
+        title="📩 POTRZEBUJESZ POMOCY?", 
+        description=(
+            "Otwórz bilet, aby skontaktować się z Radą Administracji.\n"
+            "Wybierz temat z menu poniżej, by rozpocząć audiencję."
+        ), 
+        color=THEME_COLOR
+    )
     await interaction.channel.send(embed=emb, view=TicketLauncher())
-    await interaction.response.send_message("Wyrocznia jest gotowa.", ephemeral=True)
+    await interaction.response.send_message("✅ Panel audiencji gotowy.", ephemeral=True)
 
-@bot.tree.command(name="konkurs", description="Wielkie Igrzyska (Giveaway)")
-async def conc_cmd(interaction): await interaction.response.send_modal(KonkursModal())
+@bot.tree.command(name="konkurs", description="Rozpoczyna wielkie igrzyska")
+@app_commands.checks.has_permissions(administrator=True)
+async def conc_cmd(interaction: discord.Interaction):
+    await interaction.response.send_modal(KonkursModal())
 
-@bot.tree.command(name="clear", description="Oczyszcza czat")
-async def clr_cmd(interaction, ilosc: int):
+@bot.tree.command(name="clear", description="Usuwa zbędny pył słów")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clr_cmd(interaction: discord.Interaction, ilosc: int):
     await interaction.channel.purge(limit=ilosc)
-    emb = discord.Embed(description=f"🧹 Magiczna miotła usunęła **{ilosc}** wiadomości.", color=THEME_COLOR)
+    emb = discord.Embed(description=f"🧹 Usunięto **{ilosc}** zbędnych pism.", color=THEME_COLOR)
     await interaction.response.send_message(embed=emb, ephemeral=True)
 
-# --- 📜 KRONIKI I STATUS ---
+# --- 📜 ZDARZENIA ---
 @bot.event
 async def on_member_join(member):
     await bot.update_status()
     channel = bot.get_channel(ID_KANALU_POWITAN)
     if channel:
-        emb = discord.Embed(title="🪐 Nowa postać na orbicie!", color=THEME_COLOR)
-        emb.description = f"Witaj {member.mention}! Niech gwiazdy Ci sprzyjają w **𝑺𝒘𝒊𝒓𝑯𝒖𝒃**."
+        emb = discord.Embed(title="🪐 Nowa dusza w królestwie!", color=THEME_COLOR)
+        emb.description = f"Witaj {member.mention}! Niech Twoja podróż przez **𝑺𝒘𝒊𝒓𝑯𝒖𝒃** będzie owocna."
         emb.set_thumbnail(url=member.display_avatar.url)
         await channel.send(embed=emb)
 
@@ -175,11 +207,12 @@ async def on_member_remove(member): await bot.update_status()
 @bot.event
 async def on_ready():
     await bot.update_status()
-    print(f"✅ 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 AI zasiadło na tronie.")
+    print(f"✅ SwirHub ONLINE i gotowy do służby.")
 
 @bot.command()
+@commands.has_permissions(administrator=True)
 async def sync(ctx):
     await bot.tree.sync()
-    await ctx.send("✅ Artefakty i komendy Slash zsynchronizowane.")
+    await ctx.send("✅ Kodeks komend Slash został odświeżony!")
 
 bot.run(os.getenv('DISCORD_TOKEN'))
