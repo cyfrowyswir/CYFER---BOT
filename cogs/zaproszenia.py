@@ -9,12 +9,11 @@ class Zaproszenia(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # Pobieramy zaproszenia dla każdego serwera przy starcie bota
         for guild in self.bot.guilds:
             try:
                 self.invites[guild.id] = await guild.invites()
             except discord.Forbidden:
-                print(f"❌ Brak uprawnień do czytania zaproszeń na serwerze: {guild.name}")
+                print(f"❌ Brak uprawnień do zaproszeń na: {guild.name}")
 
     def find_invite_by_code(self, invite_list, code):
         for inv in invite_list:
@@ -43,35 +42,41 @@ class Zaproszenia(commands.Cog):
                     used_invite = new_invite
                     break
 
-            embed = discord.Embed(title="🎫 Nowe Zaproszenie!", color=0x2ecc71)
+            embed = discord.Embed(
+                title="✨ Nowe dołączenie przez zaproszenie!",
+                color=0x2ecc71
+            )
+
             if inviter:
+                # Liczymy wszystkie zaproszenia danej osoby
                 total_uses = sum(i.uses for i in new_invites if i.inviter and i.inviter.id == inviter.id)
+                
+                # Dokładna treść, o którą prosiłeś:
                 embed.description = (
-                    f"Gracz **{inviter.name}** zaprosił użytkownika {member.mention}!\n\n"
-                    f"👤 **Zapraszający:** {inviter.mention}\n"
-                    f"📈 **Łącznie zaproszonych osób:** `{total_uses}`"
+                    f"👤 Użytkownik {member.mention} dołączył!\n"
+                    f"📩 Zaproszenie od: {inviter.mention}\n\n"
+                    f"📈 Osoba, która wysłała mu zaproszenie, ma już zaproszone: **{total_uses}** osób."
                 )
             else:
-                embed.description = f"Użytkownik {member.mention} dołączył bezpośrednio."
-            
+                embed.description = f"👤 Użytkownik {member.mention} dołączył bez użycia kodu (lub przez Vanity URL)."
+                embed.color = 0x95a5a6
+
             embed.set_thumbnail(url=member.display_avatar.url)
+            embed.set_footer(text=f"ID Użytkownika: {member.id}", icon_url=member.guild.icon.url if member.guild.icon else None)
+            embed.timestamp = discord.utils.utcnow()
+            
             await channel.send(embed=embed)
         except Exception as e:
-            print(f"Błąd przy on_member_join: {e}")
+            print(f"Błąd zaproszeń: {e}")
 
-    # --- NOWA KOMENDA ADMINISTRACYJNA ---
-    @app_commands.command(name="zaproszenia", description="Sprawdza liczbę zaproszeń danego gracza")
-    @app_commands.describe(uzytkownik="Wybierz gracza, którego zaproszenia chcesz sprawdzić")
+    @app_commands.command(name="zaproszenia", description="Sprawdza statystyki zaproszeń")
     @app_commands.checks.has_permissions(administrator=True)
     async def sprawdz_zaproszenia(self, interaction: discord.Interaction, uzytkownik: discord.Member = None):
-        # Jeśli nie wybrano użytkownika, sprawdzamy osobę wpisującą komendę
         target = uzytkownik or interaction.user
-        
-        await interaction.response.defer(ephemeral=True) # Zapobiega błędom przy długim ładowaniu
+        await interaction.response.defer(ephemeral=True)
         
         try:
             invites = await interaction.guild.invites()
-            # Liczymy wszystkie użycia zaproszeń stworzonych przez danego użytkownika
             user_invites_count = sum(i.uses for i in invites if i.inviter and i.inviter.id == target.id)
             
             embed = discord.Embed(
@@ -80,13 +85,9 @@ class Zaproszenia(commands.Cog):
                 color=0x5865F2
             )
             embed.set_thumbnail(url=target.display_avatar.url)
-            embed.set_footer(text=f"Sprawdzone przez: {interaction.user.name}")
-            
             await interaction.followup.send(embed=embed)
-        except discord.Forbidden:
-            await interaction.followup.send("❌ Nie mam uprawnień do przeglądania zaproszeń!", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Wystąpił błąd: {e}", ephemeral=True)
+        except:
+            await interaction.followup.send("❌ Błąd uprawnień.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Zaproszenia(bot))
