@@ -8,35 +8,39 @@ class Konkursy(commands.Cog):
 
     @app_commands.command(name="konkurs", description="Tworzy prestiżowy panel konkursowy")
     @app_commands.describe(
-        nagroda="Co jest do wygrania?",
-        koniec="Kiedy kończymy? (np. 24h, 3 dni)",
-        wymagania="Podaj zasady (np. ranga, weryfikacja)"
+        nagroda="Co można wygrać?",
+        koniec="Czas trwania (np. 24h)",
+        wymagania="Co trzeba zrobić, żeby wygrać?"
     )
     @app_commands.checks.has_permissions(administrator=True)
-    async def konkurs(self, interaction: discord.Interaction, nagroda: str, koniec: str, wymagania: str = "Brak"):
+    async def konkurs(self, interaction: discord.Interaction, nagroda: str, koniec: str, wymagania: str = "Brak wymagań"):
+        # Bogaty design embeda
         emb = discord.Embed(
-            title="🎊 NOWY KONKURS NA ŚWIRHUB! 🎊",
+            title="🎉  WIELKI KONKURS  🎉",
             description=(
-                "**Wielka szansa na wygraną! Dołącz do wspólnej zabawy.**\n\n"
-                f"🎁 **NAGRODA:** `{nagroda}`\n"
-                f"⏳ **CZAS TRWANIA:** `{koniec}`\n\n"
+                "**Zapraszamy wszystkich do udziału!**\n\n"
+                f"🎁 **NAGRODA GŁÓWNA:**\n> `{nagroda}`\n\n"
+                f"⏳ **KONIEC ZA:**\n> `{koniec}`\n\n"
                 f"📝 **WYMAGANIA:**\n> {wymagania}\n\n"
-                "**Jak wziąć udział?**\n"
-                "Wystarczy kliknąć w reakcję 🎉 poniżej!"
+                "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+                "**Aby wziąć udział, zostaw reakcję 🎉 pod tą wiadomością!**"
             ),
-            color=0xf1c40f
+            color=0xf1c40f # Złoty kolor
         )
         
         if interaction.guild.icon:
             emb.set_thumbnail(url=interaction.guild.icon.url)
             
         emb.set_footer(
-            text=f"Powodzenia życzy {interaction.user.name}", 
+            text=f"Organizator: {interaction.user.display_name} • Powodzenia!", 
             icon_url=interaction.user.display_avatar.url
         )
         emb.timestamp = discord.utils.utcnow()
 
-        await interaction.response.send_message("✅ Panel konkursowy wysłany!", ephemeral=True)
+        # Najpierw odpowiadamy na interakcję (żeby nie było błędu "nie reaguje")
+        await interaction.response.send_message("✅ Konkurs został utworzony!", ephemeral=True)
+        
+        # Potem wysyłamy embed i dajemy reakcję
         msg = await interaction.channel.send(embed=emb)
         await msg.add_reaction("🎉")
 
