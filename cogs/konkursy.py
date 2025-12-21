@@ -1,50 +1,101 @@
 import discord
-from discord import app_commands
+from discord import app_commands, ui
 from discord.ext import commands
+import asyncio
+import random
+import re
+
+# Widok z przyciskiem do zapisu
+class GiveawayView(discord.ui.View):
+    def __init__(self, timeout):
+        super().__init__(timeout=None) # Przycisk nie wygasa technicznie
+        self.participants = []
+
+    @discord.ui.button(label="Dołącz do konkursu!", style=discord.ButtonStyle.blurple, emoji="🎉", custom_id="join_giveaway")
+    async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id in self.participants:
+            return await interaction.response.send_message("🛡️ Już bierzesz udział w tym konkursie!", ephemeral=True)
+        
+        self.participants.append(interaction.user.id)
+        await interaction.response.send_message("✅ Zostałeś zapisany! Powodzenia!", ephemeral=True)
+
+# Okienko GUI do wpisywania danych konkursu
+class KonkursModal(ui.Modal, title="Ustawienia Konkursu 🎊"):
+    nagroda = ui.TextInput(label="Nagroda", placeholder="np. Ranga VIP, 1000 monet...", min_length=2)
+    czas = ui.TextInput(label="Czas trwania", placeholder="np. 10s, 5m, 1h, 1d", min_length=2)
+    wymagania = ui.TextInput(label="Wymagania", style=discord.TextStyle.paragraph, placeholder="np. Brak, Ranga Swir, Aktywność...", default="Brak", required=False)
+
+    def parse_time(self, time_str):
+        units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+        match = re.match(r"(\num+)([smhd])", time_str.lower())
+        if not match: return None
+        val, unit = match.groups()
+        return int(val) * units[unit]
+
+    async def on_submit(self, interaction: discord.Interaction):
+        seconds = self.parse_time(self.czas.value)
+        if seconds is None:
+            return await interaction.response.send_message("❌ Błędny format czasu! Użyj np. 30s, 5m, 1h.", ephemeral=True)
+
+        embed = discord.Embed(
+            title="🎊 NOWY KONKURS NA 𝑺𝒘𝒊𝒓𝑯𝒖𝒃! 🎊",
+            description=(
+                f"### ✨ Wyjątkowa okazja!\n\n"
+                f"🎁 **Nagroda:** `{self.nagroda.value}`\n"
+                f"⏳ **Koniec za:** `{self.czas.value}`\n"
+                f"📝 **Wymagania:** {self.wymagania.value}\n\n"
+                "**Kliknij przycisk poniżej, aby wziąć udział!**"
+            ),
+            color=0xf1c40f
+        )
+        if interaction.guild.icon:
+            embed.set_thumbnail(url=interaction.guild.icon.url)
+        embed.set_footer(text=f"Organizator: {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
+
+        view = GiveawayView(timeout=seconds)
+        await interaction.response.send_message("✅ Konkurs wystartował!", ephemeral=True)
+        msg = await interaction.channel.send(embed=embed, view=view)
+
+        # Odliczanie do końca
+        await asyncio.sleep(seconds)
+
+        # Losowanie zwycięzcy
+        if not view.participants:
+            end_embed = discord.Embed(title="❌ Konkurs zakończony", description=f"Nikt nie wziął udziału w losowaniu `{self.nagroda.value}`.", color=0xe74c3c)
+            await msg.edit(embed=end_embed, view=None)
+        else:
+            winner_id = random.choice(view.participants)
+            winner = interaction.guild.get_member(winner_id)
+            
+            win_embed = discord.Embed(
+                title="🎊 KONKURS ZAKOŃCZONY! 🎊",
+                description=f"🎁 **Nagroda:** `{self.nagroda.value}`\n🏆 **Zwycięzca:** {winner.mention if winner else 'Nieznany użytkownik'}",
+                color=0x2ecc71
+            )
+            await msg.edit(embed=win_embed, view=None)
+            await interaction.channel.send(f"🎉 Gratulacje {winner.mention}! Wygrałeś **{self.nagroda.value}**!")
+
+            # Powiadomienie na PV
+            if winner:
+                try:
+                    await winner.send(
+                        f"🎊 **GRATULACJE!** 🎊\n\n"
+                        f"Wygrałeś w konkursie na serwerze **{interaction.guild.name}**!\n"
+                        f"🎁 **Nagroda:** `{self.nagroda.value}`\n\n"
+                        f"Skontaktuj się z {interaction.user.mention}, aby odebrać nagrodę!"
+                    )
+                except discord.Forbidden:
+                    await interaction.channel.send(f"⚠️ Nie mogłem wysłać wiadomości PV do {winner.mention} (zablokowane DM).")
 
 class Konkursy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="konkurs", description="Tworzy prestiżowy panel konkursowy w GUI")
-    @app_commands.describe(
-        nagroda="Co jest nagrodą główną?",
-        koniec="Kiedy kończy się konkurs? (np. za 48h)",
-        wymagania="Jakie są zasady wzięcia udziału?"
-    )
+    @app_commands.command(name="konkurs", description="Otwiera okno GUI do stworzenia konkursu")
     @app_commands.checks.has_permissions(administrator=True)
-    async def konkurs(self, interaction: discord.Interaction, nagroda: str, koniec: str, wymagania: str = "Brak"):
-        # Budowanie pięknego Embedu
-        emb = discord.Embed(
-            title="🎊  WIELKI KONKURS NA 𝑺𝒘𝒊𝒓𝑯𝒖𝒃!  🎊",
-            description=(
-                "### ✨ Weź udział i zgarnij nagrody!\n\n"
-                f"🎁 **Nagroda Główna:**\n> `{nagroda}`\n\n"
-                f"⏳ **Czas trwania:**\n> `{koniec}`\n\n"
-                f"📝 **Wymagania:**\n> {wymagania}\n\n"
-                "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-                "**Aby dołączyć do losowania, kliknij 🎉 poniżej!**"
-            ),
-            color=0xf1c40f # Prestiżowy złoty kolor
-        )
-        
-        # Miniaturka serwera w prawym górnym rogu
-        if interaction.guild.icon:
-            emb.set_thumbnail(url=interaction.guild.icon.url)
-            
-        # Stopka z organizatorem i datą
-        emb.set_footer(
-            text=f"Organizator: {interaction.user.display_name} • Powodzenia!", 
-            icon_url=interaction.user.display_avatar.url
-        )
-        emb.timestamp = discord.utils.utcnow()
-
-        # Najpierw wysyłamy informację zwrotną dla bota
-        await interaction.response.send_message("✅ Panel konkursowy został pomyślnie utworzony!", ephemeral=True)
-        
-        # Wysyłamy właściwy panel na kanał i dodajemy reakcję 🎉
-        msg = await interaction.channel.send(embed=emb)
-        await msg.add_reaction("🎉")
+    async def konkurs(self, interaction: discord.Interaction):
+        # Wysyła okienko Modal do wypełnienia
+        await interaction.response.send_modal(KonkursModal())
 
 async def setup(bot):
     await bot.add_cog(Konkursy(bot))
