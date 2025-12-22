@@ -1,73 +1,93 @@
 import discord
-from discord import app_commands
 from discord.ext import commands
+from discord import app_commands
 import datetime
-import asyncio
 
-class Administracja(commands.Cog):
-    def __init__(self, bot):
+class Admin(commands.Cog):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    async def wyslij_pv(self, uzytkownik, tytul, powod, kolor, gildia, admin):
-        emb = discord.Embed(
-            title=tytul,
-            description=f"**Serwer:** {gildia}\n**Powód:** {powod}\n**Administrator:** {admin}",
-            color=kolor
-        )
-        emb.timestamp = discord.utils.utcnow()
-        try:
-            await uzytkownik.send(embed=emb)
-        except:
-            pass
+    @app_commands.command(name="clear", description="Usuwa określoną liczbę wiadomości")
+    @app_commands.describe(ilosc="Liczba wiadomości do usunięcia")
+    @app_commands.checks.has_permissions(manage_messages=True)
+    async def clear(self, interaction: discord.Interaction, ilosc: int):
+        if ilosc < 1 or ilosc > 100:
+            return await interaction.response.send_message("❌ Możesz usunąć od 1 do 100 wiadomości na raz.", ephemeral=True)
 
-    @app_commands.command(name="tempban", description="Banuje użytkownika na określony czas")
-    @app_commands.describe(
-        uzytkownik="Kogo chcesz zbanować?", 
-        czas="Liczba (np. 10)", 
-        jednostka="Wybierz: Minuty, Godziny, Dni",
-        powod="Podaj powód bana"
-    )
-    @app_commands.choices(jednostka=[
-        app_commands.Choice(name="Minuty", value="m"),
-        app_commands.Choice(name="Godziny", value="h"),
-        app_commands.Choice(name="Dni", value="d")
-    ])
+        await interaction.response.defer(ephemeral=True)
+        deleted = await interaction.channel.purge(limit=ilosc)
+
+        embed = discord.Embed(
+            title="🧹 Czystka wykonana!",
+            description=(
+                f"**𝑺 𝑾 𝑰 Ｒ Ｈ 𝑼 𝑩**\n\n"
+                f"👤 Moderator: {interaction.user.mention}\n"
+                f"💬 Usunięto: **{len(deleted)}** wiadomości\n"
+                f"📂 Kanał: {interaction.channel.mention}"
+            ),
+            color=discord.Color.from_rgb(255, 0, 255)
+        )
+        embed.set_footer(text="Administracja • 𝑺𝒘𝒊𝒓𝑯𝒖𝒃")
+        embed.set_timestamp()
+
+        await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="ban", description="Banuje użytkownika na serwerze")
+    @app_commands.describe(uzytkownik="Kogo chcesz zbanować?", powod="Powód bana")
     @app_commands.checks.has_permissions(ban_members=True)
-    async def tempban(self, interaction: discord.Interaction, uzytkownik: discord.Member, czas: int, jednostka: app_commands.Choice[str], powod: str = "Brak powodu"):
+    async def ban(self, interaction: discord.Interaction, uzytkownik: discord.Member, powod: str = "Brak powodu"):
         if uzytkownik.top_role >= interaction.user.top_role:
-            return await interaction.response.send_message("❌ Nie możesz zbanować tej osoby!", ephemeral=True)
+            return await interaction.response.send_message("❌ Nie możesz zbanować osoby z wyższą lub równą rolą!", ephemeral=True)
 
-        # Przeliczanie czasu na sekundy
-        sekundy = 0
-        czas_tekst = ""
-        if jednostka.value == "m":
-            sekundy = czas * 60
-            czas_tekst = f"{czas} min"
-        elif jednostka.value == "h":
-            sekundy = czas * 3600
-            czas_tekst = f"{czas} godz"
-        elif jednostka.value == "d":
-            sekundy = czas * 86400
-            czas_tekst = f"{czas} dni"
-
-        # Wysyłanie PW
-        await self.wyslij_pv(
-            uzytkownik, 
-            f"⏳ Zostałeś ZBANOWANY CZASOWO na {interaction.guild.name}", 
-            f"{powod} (Czas: {czas_tekst})", 
-            0xffa500, 
-            interaction.guild.name, 
-            interaction.user.name
-        )
-
-        await uzytkownik.ban(reason=f"Tempban: {powod} ({czas_tekst})")
-        await interaction.response.send_message(f"✅ Zbanowano {uzytkownik.mention} na **{czas_tekst}**.", ephemeral=True)
-
-        # Czekanie i Unban
-        await asyncio.sleep(sekundy)
         try:
-            await interaction.guild.unban(uzytkownik, reason="Koniec czasu bana")
-        except:
-            pass # Jeśli został odbanowany ręcznie wcześniej
+            await uzytkownik.ban(reason=powod)
+            embed = discord.Embed(
+                title="🔨 Użytkownik Zbanowany",
+                description=(
+                    f"**𝑺 𝑾 𝑰 Ｒ Ｈ 𝑼 𝑩**\n\n"
+                    f"👤 Zbanowany: **{uzytkownik.name}**\n"
+                    f"👮 Moderator: {interaction.user.mention}\n"
+                    f"📝 Powód: `{powod}`"
+                ),
+                color=discord.Color.red()
+            )
+            embed.set_thumbnail(url=uzytkownik.display_avatar.url)
+            embed.set_footer(text="System Kar • 𝑺𝒘𝒊𝒓𝑯𝒖𝒃")
+            
+            await interaction.response.send_message(embed=embed)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Wystąpił błąd: {e}", ephemeral=True)
 
-    # Reszta Twoich komend (kick, ban, mute) zostaje bez zmian pod spodem...
+    @app_commands.command(name="kick", description="Wyrzuca użytkownika z serwera")
+    @app_commands.describe(uzytkownik="Kogo chcesz wyrzucić?", powod="Powód wyrzucenia")
+    @app_commands.checks.has_permissions(kick_members=True)
+    async def kick(self, interaction: discord.Interaction, uzytkownik: discord.Member, powod: str = "Brak powodu"):
+        if uzytkownik.top_role >= interaction.user.top_role:
+            return await interaction.response.send_message("❌ Nie możesz wyrzucić tej osoby!", ephemeral=True)
+
+        try:
+            await uzytkownik.kick(reason=powod)
+            embed = discord.Embed(
+                title="👢 Użytkownik Wyrzucony",
+                description=(
+                    f"**𝑺 𝑾 𝑰 Ｒ Ｈ 𝑼 𝑩**\n\n"
+                    f"👤 Wyrzucony: **{uzytkownik.name}**\n"
+                    f"👮 Moderator: {interaction.user.mention}\n"
+                    f"📝 Powód: `{powod}`"
+                ),
+                color=discord.Color.orange()
+            )
+            embed.set_footer(text="System Kar • 𝑺𝒘𝒊𝒓𝑯𝒖𝒃")
+            
+            await interaction.response.send_message(embed=embed)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Wystąpił błąd: {e}", ephemeral=True)
+
+    @app_commands.command(name="say", description="Wysyła wiadomość jako bot (zwykły tekst)")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def say(self, interaction: discord.Interaction, tresc: str):
+        await interaction.channel.send(tresc)
+        await interaction.response.send_message("✅ Wysłano.", ephemeral=True)
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Admin(bot))
