@@ -1,93 +1,117 @@
 import discord
-from discord import app_commands
 from discord.ext import commands
+from discord import app_commands
 
 class Zaproszenia(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.invites = {}
+        # Cache zaproszeń: {guild_id: {invite_code: uses}}
+        self.invites_cache = {}
 
     @commands.Cog.listener()
     async def on_ready(self):
+        # Budowanie wstępnego cache zaproszeń dla wszystkich serwerów
         for guild in self.bot.guilds:
             try:
-                self.invites[guild.id] = await guild.invites()
+                self.invites_cache[guild.id] = {invite.code: invite.uses for invite in await guild.invites()}
             except discord.Forbidden:
-                print(f"❌ Brak uprawnień do zaproszeń na: {guild.name}")
+                print(f"Brak uprawnień do czytania zaproszeń na serwerze: {guild.name}")
+        print("System Zaproszeń: Cache został załadowany.")
 
-    def find_invite_by_code(self, invite_list, code):
-        for inv in invite_list:
-            if inv.code == code:
-                return inv
-        return None
+    @commands.Cog.listener()
+    async def on_invite_create(self, invite):
+        if invite.guild.id not in self.invites_cache:
+            self.invites_cache[invite.guild.id] = {}
+        self.invites_cache[invite.guild.id][invite.code] = invite.uses
+
+    @commands.Cog.listener()
+    async def on_invite_delete(self, invite):
+        if invite.guild.id in self.invites_cache:
+            self.invites_cache[invite.guild.id].pop(invite.code, None)
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
-        kanal_id = 1451263521995362565
-        channel = member.guild.get_channel(kanal_id)
-        if not channel: return
-
-        try:
-            new_invites = await member.guild.invites()
-            old_invites = self.invites.get(member.guild.id, [])
-            self.invites[member.guild.id] = new_invites
-
-            inviter = None
-            used_invite = None
-
-            for invite in old_invites:
-                new_invite = self.find_invite_by_code(new_invites, invite.code)
-                if new_invite and new_invite.uses > invite.uses:
-                    inviter = invite.inviter
-                    used_invite = new_invite
-                    break
-
-            embed = discord.Embed(
-                title="✨ Nowe dołączenie przez zaproszenie!",
-                color=0x2ecc71
-            )
-
-            if inviter:
-                # Liczymy wszystkie zaproszenia danej osoby
-                total_uses = sum(i.uses for i in new_invites if i.inviter and i.inviter.id == inviter.id)
-                
-                # Dokładna treść, o którą prosiłeś:
-                embed.description = (
-                    f"👤 Użytkownik {member.mention} dołączył!\n"
-                    f"📩 Zaproszenie od: {inviter.mention}\n\n"
-                    f"📈 Osoba, która wysłała mu zaproszenie, ma już zaproszone: **{total_uses}** osób."
-                )
-            else:
-                embed.description = f"👤 Użytkownik {member.mention} dołączył bez użycia kodu (lub przez Vanity URL)."
-                embed.color = 0x95a5a6
-
-            embed.set_thumbnail(url=member.display_avatar.url)
-            embed.set_footer(text=f"ID Użytkownika: {member.id}", icon_url=member.guild.icon.url if member.guild.icon else None)
-            embed.timestamp = discord.utils.utcnow()
-            
-            await channel.send(embed=embed)
-        except Exception as e:
-            print(f"Błąd zaproszeń: {e}")
-
-    @app_commands.command(name="zaproszenia", description="Sprawdza statystyki zaproszeń")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def sprawdz_zaproszenia(self, interaction: discord.Interaction, uzytkownik: discord.Member = None):
-        target = uzytkownik or interaction.user
-        await interaction.response.defer(ephemeral=True)
+        invites_before = self.invites_cache.get(member.guild.id, {})
+        invites_after = await member.guild.invites()
         
-        try:
-            invites = await interaction.guild.invites()
-            user_invites_count = sum(i.uses for i in invites if i.inviter and i.inviter.id == target.id)
-            
-            embed = discord.Embed(
-                title="📊 Statystyki Zaproszeń",
-                description=f"Użytkownik: {target.mention}\nIlość zaproszonych osób: **{user_invites_count}**",
-                color=0x5865F2
-            )
-            embed.set_thumbnail(url=target.display_avatar.url)
-            await interaction.followup.send(embed=embed)
-        except:
-            await interaction.followup.send("❌ Błąd uprawnień.", ephemeral=True)
+        inviter = None
+        for invite in invites_after:
+            if invite.code in invites_before and invite.uses > invites_before[invite.code]:
+                inviter = invite.inviter
+                # Aktualizacja cache
+                self.invites_cache[member.guild.id][invite.code] = invite.uses
+                break
+        
+        # Opcjonalne: Logowanie do kanału (możesz ustawić ID kanału)
+        # channel = member.guild.get_channel(ID_KANALU)
+        # if inviter and channel:
+        #    await channel.send(f"📥 **{member}** dołączył dzięki zaproszeniu od **{inviter}**!")
 
-async def setup(bot):
+    @app_commands.command(name="zaproszenia", description="Sprawdza liczbę Twoich zaproszeń lub wybranego użytkownika")
+    @app_commands.describe(uzytkownik="Użytkownik, którego statystyki chcesz sprawdzić")
+    async def zaproszenia(self, interaction: discord.Interaction, uzytkownik: discord.Member = None):
+        target = uzytkownik or interaction.user
+        
+        total_invites = 0
+        guild_invites = await interaction.guild.invites()
+        
+        for invite in guild_invites:
+            if invite.inviter == target:
+                total_invites += invite.uses
+
+        embed = discord.Embed(
+            title="Statystyki Zaproszeń 𝑺𝒘𝒊𝒓𝑯𝒖𝒃",
+            description=f"Statystyki dla użytkownika: {target.mention}",
+            color=discord.Color.green()
+        )
+        
+        embed.add_field(
+            name="📊 Liczba zaproszonych osób", 
+            value=f"**{total_invites}** użytkowników", 
+            inline=False
+        )
+        
+        embed.set_thumbnail(url=target.display_avatar.url)
+        embed.set_footer(
+            text="System Zaproszeń • 𝑺𝒘𝒊𝒓𝑯𝒖𝒃", 
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else None
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="top-zaproszenia", description="Pokazuje listę osób z największą liczbą zaproszeń")
+    async def top_zaproszenia(self, interaction: discord.Interaction):
+        guild_invites = await interaction.guild.invites()
+        invite_counts = {}
+
+        for invite in guild_invites:
+            if invite.inviter:
+                inviter_name = f"{invite.inviter.name}#{invite.inviter.discriminator}" if invite.inviter.discriminator != "0" else invite.inviter.name
+                invite_counts[inviter_name] = invite_counts.get(inviter_name, 0) + invite.uses
+
+        # Sortowanie od największej liczby
+        sorted_invites = sorted(invite_counts.items(), key=lambda item: item[1], reverse=True)[:10]
+
+        description = ""
+        for i, (name, count) in enumerate(sorted_invites, 1):
+            emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "👤"
+            description += f"{emoji} **{i}. {name}** — `{count}` zaproszeń\n"
+
+        if not description:
+            description = "Brak danych o zaproszeniach."
+
+        embed = discord.Embed(
+            title="Ranking Zaproszeń 𝑺𝒘𝒊𝒓𝑯𝒖𝒃",
+            description=description,
+            color=discord.Color.gold()
+        )
+        
+        embed.set_footer(
+            text="Top Zaproszenia • 𝑺𝒘𝒊𝒓𝑯𝒖𝒃", 
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else None
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+async def setup(bot: commands.Bot):
     await bot.add_cog(Zaproszenia(bot))
