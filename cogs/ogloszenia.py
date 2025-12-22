@@ -1,54 +1,66 @@
 import discord
-from discord import app_commands, ui
 from discord.ext import commands
+from discord import app_commands
 
-# Okienko GUI do wpisywania treści ogłoszenia
-class OgloszenieModal(ui.Modal, title="Tworzenie Ogłoszenia 📢"):
-    tytul = ui.TextInput(label="Tytuł", placeholder="np. REGULAMIN SERWERA", min_length=2)
-    tresc = ui.TextInput(
-        label="Treść punktów (każdy w nowej linii)", 
-        style=discord.TextStyle.paragraph, 
-        placeholder="Punkt pierwszy\nPunkt drugi\nPunkt trzeci...",
-        min_length=5
+# --- MODAL: OKNO WPISYWANIA TREŚCI OGŁOSZENIA ---
+class OgloszenieModal(discord.ui.Modal, title="Kreator Ogłoszenia 𝑺𝒘𝒊𝒓𝑯𝒖𝒃"):
+    tytul = discord.ui.TextInput(
+        label="Tytuł Ogłoszenia",
+        placeholder="Np. Przerwa techniczna, Nowa aktualizacja...",
+        required=True,
+        style=discord.TextStyle.short # Poprawione tutaj
+    )
+    
+    naglowek = discord.ui.TextInput(
+        label="Nagłówek (Główny tekst pod tytułem)",
+        placeholder="Np. WAŻNE INFORMACJE DLA GRACZY",
+        required=False,
+        default="Ｓ Ｗ Ｉ Ｒ Ｈ Ｕ Ｂ"
+    )
+
+    tresc = discord.ui.TextInput(
+        label="Treść wiadomości",
+        placeholder="Tutaj wpisz całą treść swojego ogłoszenia...",
+        style=discord.TextStyle.long, # Tutaj też musi być TextStyle.long
+        required=True,
+        min_length=10
+    )
+
+    obrazek = discord.ui.TextInput(
+        label="Link do obrazka (opcjonalnie)",
+        placeholder="https://link-do-zdjecia.pl/obrazek.png",
+        required=False
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Rozdzielamy tekst na linie i dodajemy numerki §
-        linie = self.tresc.value.split('\n')
-        sformatowany_tekst = ""
-        
-        for i, linia in enumerate(linie, 1):
-            if linia.strip(): # Pomijamy puste linie
-                # Formatowanie: §0.01 Treść punktu
-                numer = f"§0.{i:02d}" 
-                sformatowany_tekst += f"**{numer}** {linia.strip()}\n"
-
-        emb = discord.Embed(
+        # Tworzenie estetycznego Embedu na wzór powitania
+        embed = discord.Embed(
             title=f"📢 {self.tytul.value}",
-            description=sformatowany_tekst,
-            color=0x5865F2
+            description=f"**{self.naglowek.value}**\n\n{self.tresc.value}",
+            color=discord.Color.from_rgb(255, 0, 255) # Spójny różowy kolor
         )
+
+        if self.obrazek.value.startswith("http"):
+            embed.set_image(url=self.obrazek.value)
+
+        embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
         
-        if interaction.guild.icon:
-            emb.set_thumbnail(url=interaction.guild.icon.url)
-        
-        emb.set_footer(
-            text=f"Ogłoszenie od: {interaction.user.display_name}", 
+        embed.set_footer(
+            text=f"Ogłoszenie wysłane przez: {interaction.user.display_name} • 𝑺𝒘𝒊𝒓𝑯𝒖𝒃",
             icon_url=interaction.user.display_avatar.url
         )
-        emb.timestamp = discord.utils.utcnow()
+        embed.timestamp = discord.utils.utcnow()
 
-        await interaction.channel.send(embed=emb)
-        await interaction.response.send_message("✅ Ogłoszenie sformatowane i wysłane!", ephemeral=True)
+        await interaction.channel.send(embed=embed)
+        await interaction.response.send_message("Ogłoszenie zostało wysłane pomyślnie!", ephemeral=True)
 
 class Ogloszenia(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="tekst", description="Otwiera GUI do tworzenia sformatowanego tekstu")
+    @app_commands.command(name="ogloszenie", description="Wysyła estetyczny panel ogłoszenia Serwera 𝑺𝒘𝒊𝒓𝑯𝒖𝒃")
     @app_commands.checks.has_permissions(administrator=True)
-    async def tekst(self, interaction: discord.Interaction):
-        # Wywołanie okna Modal zamiast zwykłej komendy tekstowej
+    async def ogloszenie(self, interaction: discord.Interaction):
         await interaction.response.send_modal(OgloszenieModal())
 
 async def setup(bot):
