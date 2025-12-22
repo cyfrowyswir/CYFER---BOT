@@ -1,93 +1,114 @@
 import discord
-from discord import app_commands
 from discord.ext import commands
-from discord.ui import View, Select
+from discord import app_commands
+import datetime
 
-class TicketView(View):
+# --- SYSTEM WERYFIKACJI 𝑺𝒘𝒊𝒓𝑯𝒖𝒃 ---
+# Moduł: System Zgłoszeń (Tickets)
+# Status: Pełna wersja funkcjonalna
+
+class TicketCreateView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.select(
-        custom_id="swirhub_ticket_v5",
-        placeholder="🌐 Wybierz rodzaj zgłoszenia...",
-        options=[
-            discord.SelectOption(
-                label="Pomoc Techniczna", 
-                description="Problemy z serwerem, błędy, bugi.",
-                emoji="🛠️", 
-                value="pomoc"
-            ),
-            discord.SelectOption(
-                label="Sklep i Płatności", 
-                description="Pytania o rangi, problemy z zakupem.",
-                emoji="💰", 
-                value="sklep"
-            ),
-            discord.SelectOption(
-                label="Skarga / Odwołanie", 
-                description="Zgłoś gracza lub odwołaj się od kary.",
-                emoji="⚖️", 
-                value="skarga"
-            )
-        ]
+    @discord.ui.button(
+        label="Otwórz Ticket", 
+        style=discord.ButtonStyle.primary, 
+        custom_id="create_ticket_btn",
+        emoji="📩"
     )
-    async def callback(self, interaction: discord.Interaction, select: Select):
-        # Ustawienia kanału (tylko dla usera i adminów)
-        overwrites = {
-            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
+    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        user = interaction.user
         
-        # Tworzenie kanału z ładną nazwą
-        ch = await interaction.guild.create_text_channel(
-            name=f"🆘-{interaction.user.name}", 
-            overwrites=overwrites,
-            category=interaction.channel.category # Tworzy ticket w tej samej kategorii co panel
-        )
+        # Szukanie kategorii dla ticketów
+        category = discord.utils.get(guild.categories, name="TICKETY")
         
-        # Logowanie do kanału logów (ID: 1451263526848167956)
-        log_chan = interaction.guild.get_channel(1451263526848167956)
-        if log_chan:
-            log_emb = discord.Embed(title="📩 Nowy Ticket", color=0x2ecc71)
-            log_emb.add_field(name="Użytkownik", value=interaction.user.mention, inline=True)
-            log_emb.add_field(name="Temat", value=select.values[0].capitalize(), inline=True)
-            log_emb.add_field(name="Kanał", value=ch.mention, inline=False)
-            await log_chan.send(embed=log_emb)
+        if not category:
+            await interaction.response.send_message(
+                "❌ Błąd: Nie znaleziono kategorii `TICKETY`. Powiadom administratora!", 
+                ephemeral=True
+            )
+            return
 
-        # Powitanie w tickecie
-        welcome_emb = discord.Embed(
-            title="✨ Zgłoszenie Przyjęte",
-            description=f"Witaj {interaction.user.mention}!\n\nOpisz dokładnie swój problem, a administracja zajmie się nim najszybciej jak to możliwe.\n\n**Temat:** {select.values[0].capitalize()}",
-            color=0x5865F2
+        # Sprawdzenie czy użytkownik nie ma już otwartego ticketa
+        existing_channel = discord.utils.get(guild.channels, name=f"ticket-{user.name.lower()}")
+        if existing_channel:
+            await interaction.response.send_message(
+                f"⚠️ Masz już otwarty ticket: {existing_channel.mention}", 
+                ephemeral=True
+            )
+            return
+
+        # Ustawienia uprawnień dla kanału
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            user: discord.PermissionOverwrite(read_messages=True, send_messages=True, embed_links=True, attach_files=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
+        }
+
+        # Tworzenie kanału
+        channel = await guild.create_text_channel(
+            name=f"ticket-{user.name}",
+            category=category,
+            overwrites=overwrites,
+            reason=f"Ticket utworzony przez {user}"
         )
-        welcome_emb.set_footer(text="SwirHub Support System")
+
+        await interaction.response.send_message(f"✅ Twój ticket został utworzony: {channel.mention}", ephemeral=True)
+
+        # Wiadomość powitalna w tickecie
+        embed = discord.Embed(
+            title="📩 Nowe Zgłoszenie | 𝑺𝒘𝒊𝒓𝑯𝒖𝒃",
+            description=(
+                f"Witaj {user.mention}!\n\n"
+                "Opisz swój problem lub powód otwarcia zgłoszenia.\n"
+                "Moderacja odezwie się do Ciebie tak szybko, jak to możliwe.\n\n"
+                "**Zasady:**\n"
+                "• Nie oznaczaj administracji bez potrzeby.\n"
+                "• Zachowaj kulturę wypowiedzi."
+            ),
+            color=0x2b2d31,
+            timestamp=datetime.datetime.now()
+        )
+        embed.set_footer(text="System Weryfikacji 𝑺𝒘𝒊𝒓𝑯𝒖𝒃", icon_url=user.display_avatar.url)
         
-        await ch.send(embed=welcome_emb)
-        await interaction.response.send_message(f"✅ Twój ticket został otwarty: {ch.mention}", ephemeral=True)
+        await channel.send(embed=embed, view=TicketControlView())
+
+class TicketControlView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Zamknij Ticket", style=discord.ButtonStyle.danger, custom_id="close_ticket_btn", emoji="🔒")
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("🔓 Zamykanie ticketa za 5 sekund...", ephemeral=False)
+        await interaction.channel.edit(name=f"closed-{interaction.channel.name}")
+        
+        # Logika archiwizacji lub usuwania
+        import asyncio
+        await asyncio.sleep(5)
+        await interaction.channel.delete(reason="Ticket zamknięty przez użytkownika/moderację.")
 
 class Tickets(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="ticket", description="Wysyła profesjonalny panel zgłoszeń")
+    @app_commands.command(name="setup_tickets", description="Konfiguruje wiadomość startową ticketów")
     @app_commands.checks.has_permissions(administrator=True)
-    async def ticket(self, interaction: discord.Interaction):
-        emb = discord.Embed(
-            title="📩 Centrum Wsparcia 𝑺𝒘𝒊𝒓𝑯𝒖𝒃",
+    async def setup_tickets(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="🆘 Centrum Pomocy | 𝑺𝒘𝒊𝒓𝑯𝒖𝒃",
             description=(
-                "Potrzebujesz pomocy? Masz problem z płatnością?\n"
-                "Wybierz odpowiednią kategorię z menu poniżej!\n\n"
-                "**⌛ Czas odpowiedzi:** Zazwyczaj do 24h\n"
-                "**⚠️ Uwaga:** Nie spamuj bez potrzeby."
+                "Potrzebujesz pomocy moderatora? Masz problem z weryfikacją?\n\n"
+                "Kliknij poniższy przycisk, aby otworzyć prywatne zgłoszenie.\n\n"
+                "**System Weryfikacji 𝑺𝒘𝒊𝒓𝑯𝒖𝒃** — Czekamy na Ciebie!"
             ),
             color=0x5865F2
         )
-        emb.set_image(url="https://i.imgur.com/uVf3KUn.png") # Możesz tu wstawić link do swojego loga/grafiki
-        emb.set_footer(text="System obsługi zgłoszeń v2.0")
+        embed.set_image(url="https://twoj-link-do-logo-swirhub.png") # Możesz tu wstawić link do grafiki
         
-        await interaction.channel.send(embed=emb, view=TicketView())
-        await interaction.response.send_message("Panel pomocy został wysłany!", ephemeral=True)
+        await interaction.response.send_message("Wysyłanie panelu...", ephemeral=True)
+        await interaction.channel.send(embed=embed, view=TicketCreateView())
 
 async def setup(bot):
     await bot.add_cog(Tickets(bot))
